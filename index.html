@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+<body>
+  <main class="page-shell">
+    <div class="app-frame">
+        <div class="sidebar-zone" aria-hidden="true"></div>
+        <aside class="sidebar" aria-label="Main navigation">
+          <div class="brand"><i></i><i></i><i></i></div>
+          <div class="nav-items" id="nav"></div>
+          <button class="nav-button logout-button" id="logout" title="Log Out"></button>
+        </aside>
+
+        <section class="menu-panel">
+          <div class="menu-topline">
+            <div class="heading"><h1 id="title">Menu <span>Categorias</span></h1></div>
+            <div class="search-wrap">
+              <span id="search-icon"></span>
+              <input id="search" aria-label="Search menu" placeholder="Pesquisar Produtos" />
+              <button class="clear-search hidden" id="clear" title="Clear search"></button>
+            </div>
+          </div>
+          <div id="home-view">
+            <div class="category-list" id="categories"></div>
+            <div class="section-heading">
+              <h2>Escolha Produtos</h2>
+              <label class="sort-label">Sort By
+                <select id="sort" aria-label="Sort products">
+                  <option>Popular</option>
+                  <option>Price: low to high</option>
+                  <option>Price: high to low</option>
+                </select>
+                <span id="chevron"></span>
+              </label>
+            </div>
+            <div class="product-grid" id="products"></div>
+          </div>
+          <div class="alternate-panel hidden" id="alt-view">
+            <span class="alternate-icon" id="alt-icon"></span>
+            <h2 id="alt-title"></h2>
+            <p id="alt-text"></p>
+            <button class="btn-outline" id="back">Back to menu</button>
+          </div>
+        </section>
+
+        <aside class="order-panel" id="order-panel" aria-label="Order menu">
+          <div class="order-heading">
+            <h2>Carrinho <span>Atual</span></h2>
+            <button class="icon-btn edit-button" id="edit" title="Edit order"></button>
+          </div>
+          <div class="order-items" id="order-items"></div>
+          <div class="order-summary">
+            <div><span>Sub Total</span><strong id="subtotal"></strong></div>
+            <div><span>Discount</span><span id="discount"></span></div>
+          </div>
+          <div class="order-footer">
+            <p class="success-message hidden" id="success">Venda Finalizada!</p>
+            <button class="discount-button" id="discount-btn">Ajuste de Pagamento</button>
+            <button class="charge-button" id="charge"></button>
+          </div>
+        </aside>
+    </div>
+    <button class="mobile-cart-trigger" id="mobile-trigger"></button>
+  </main>
+  <div class="modal-overlay hidden" id="discount-modal">
+    <div class="modal">
+      <h3>Adicionar Desconto</h3>
+      <div class="modal-input-wrap"><span>R$</span><input id="discount-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" /></div>
+      <button class="modal-remove hidden" id="discount-remove">Remove discount</button>
+      <div class="modal-actions">
+        <button class="btn-outline" id="discount-cancel">Cancelar</button>
+        <button class="modal-apply" id="discount-apply">Aplicar</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="payment-modal">
+    <div class="modal payment-modal">
+      <h3 id="payment-title">Pagamento</h3>
+      <div class="payment-total"><span>Total</span><strong id="payment-total"></strong></div>
+      <div id="payment-body"></div>
+      <div class="modal-actions">
+        <button class="btn-outline" id="payment-cancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
