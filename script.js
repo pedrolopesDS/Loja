@@ -44,7 +44,7 @@ const products = [
   { id: "trufa-belga", name: "Trufa Belga", price: 4.5, category: "Chocolate", emoji: "🍫" },
   { id: "brigadeiro", name: "Brigadeiro Gourmet", price: 3.5, category: "Doces", emoji: "🍮" },
   { id: "doce-leite", name: "Doce de Leite", price: 3.0, category: "Doces", emoji: "🍮" },
-  { id: "sacola-kraft", name: "Sacola Kraft", price: 1.5, category: "Embalagem", emoji: "🛍️" },
+  { id: "sacola-kraft", name: "Sacola Kraft", price: 1.5, category: "Embalagem", emoji: "🛍️️" },
   { id: "caixa-presente", name: "Caixa de Presente", price: 5.0, category: "Embalagem", emoji: "🎁" },
   { id: "pirulito-colorido", name: "Pirulito Colorido", price: 1.0, category: "Pirulito", emoji: "🍭" },
   { id: "pirulito-gigante", name: "Pirulito Gigante", price: 3.5, category: "Pirulito", emoji: "🍭", badge: "Novo" },
@@ -62,6 +62,13 @@ const categories = [
 const catImages = { 
   Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
   Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
+};
+
+const catEmojis = {
+  Bala: "🍬",
+  Chocolate: "🍫",
+  Pirulito: "🍭",
+  Pote: "🫙"
 };
 
 const navigation = [
@@ -126,11 +133,22 @@ function renderNavigation() {
 }
 
 function renderCategories() {
-  $("categories").innerHTML = categories.map(([name, ic]) =>
-    `<button class="category-button ${state.category === name ? "category-active" : ""}" data-cat="${name}">
-      <span class="category-icon">${catImages[name] ? `<img src="${catImages[name]}" alt="" draggable="false">` : icon(ic, 22, 1.35)}</span>
+  $("categories").innerHTML = categories.map(([name, ic]) => {
+    let iconeVisual = "";
+    
+    if (catEmojis[name]) {
+      iconeVisual = `<span style="font-size: 32px;">${catEmojis[name]}</span>`;
+    } else if (catImages[name]) {
+      iconeVisual = `<img src="${catImages[name]}" alt="" draggable="false">`;
+    } else {
+      iconeVisual = icon(ic, 22, 1.35);
+    }
+
+    return `<button class="category-button ${state.category === name ? "category-active" : ""}" data-cat="${name}">
+      <span class="category-icon">${iconeVisual}</span>
       <span>${name}</span>
-    </button>`).join("");
+    </button>`;
+  }).join("");
 }
 
 function renderProducts() {
