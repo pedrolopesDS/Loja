@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV — Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+<body>
+  <main class="page-shell">
+    <div class="app-frame app-frame-single">
+      <div class="sidebar-zone" aria-hidden="true"></div>
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand"><i></i><i></i><i></i></div>
+        <div class="nav-items" id="nav"></div>
+        <button class="nav-button logout-button" id="logout" title="Log Out"></button>
+      </aside>
+
+      <section class="menu-panel" style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+        <div class="alternate-panel" id="alt-view" style="text-align: center;">
+            <span class="alternate-icon" id="alt-icon"></span>
+            <h2 id="alt-title">Dashboard</h2>
+            <p id="alt-text">Tudo pronto para começar! Registre sua primeira venda para começar a acompanhar seus resultados de hoje.</p>
+            <a href="index.html" class="btn-outline" style="text-decoration: none;">Nova Venda</a>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="dados.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

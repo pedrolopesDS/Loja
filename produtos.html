@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV — Produtos</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+<body>
+  <main class="page-shell">
+    <div class="app-frame app-frame-single">
+      <div class="sidebar-zone" aria-hidden="true"></div>
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand"><i></i><i></i><i></i></div>
+        <div class="nav-items" id="nav"></div>
+        <button class="nav-button logout-button" id="logout" title="Log Out"></button>
+      </aside>
+
+      <section class="menu-panel">
+        <div class="menu-topline">
+          <div class="heading"><h1>Produtos <span>do Catálogo</span></h1></div>
+          <button class="primary-action" id="new-product"></button>
+        </div>
+
+        <div class="admin-toolbar">
+          <div class="search-wrap">
+            <span id="search-icon"></span>
+            <input id="search" aria-label="Pesquisar produtos" placeholder="Buscar por nome ou código de barras" maxlength="60" />
+            <button class="clear-search hidden" id="clear" title="Limpar busca"></button>
+          </div>
+          <div class="admin-filter custom-select-wrapper" id="filter-wrapper" style="cursor: pointer; user-select: none;">
+            Categoria
+            <div class="custom-select-trigger" style="display: inline-flex; align-items: center; gap: 4px;">
+              <input id="filter" type="text" readonly value="Todas" style="cursor: pointer; border: 0; background: transparent; color: var(--foreground); font-family: Georgia, serif; font-size: 12px; width: 90px; outline: none; text-overflow: ellipsis;" />
+              <span id="filter-chevron" style="pointer-events: none;"></span>
+            </div>
+            <div class="custom-select-options hidden" id="filter-options" style="right: 0; left: auto; min-width: 150px; top: calc(100% + 8px);"></div>
+          </div>
+        </div>
+
+        <div class="admin-list" id="list"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Cadastro / edição -->
+  <div class="modal-overlay hidden" id="form-modal">
+    <div class="modal">
+      <h3 id="form-title">Novo Produto</h3>
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="p-name">Nome</label>
+          <div class="modal-input-wrap"><input id="p-name" maxlength="60" placeholder="Ex.: Trufa Belga" /></div>
+        </div>
+        <div class="form-field">
+          <label for="p-price">Preço</label>
+          <div class="modal-input-wrap"><span>R$</span><input id="p-price" type="text" inputmode="numeric" placeholder="0,00" /></div>
+        </div>
+        <div class="form-field">
+          <label>Foto do produto</label>
+          <div class="photo-picker">
+            <label for="p-photo" class="photo-picker-thumb thumb-media" id="photo-preview" title="Escolher foto"></label>
+            <input id="p-photo" type="file" accept="image/*" hidden />
+            <div class="photo-picker-actions">
+              <button type="button" id="photo-pick">Adicionar foto</button>
+              <button type="button" class="danger hidden" id="photo-remove">Remover foto</button>
+              <small>Clique na imagem para escolher do seu dispositivo</small>
+            </div>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Categoria</label>
+          <div class="custom-select-wrapper" id="cat-wrapper">
+            <div class="modal-input-wrap custom-select-trigger" id="cat-trigger">
+              <input id="p-category" type="text" readonly placeholder="Selecione..." style="cursor: pointer;" />
+              <span id="cat-chevron" style="color: var(--muted-foreground); pointer-events: none;"></span>
+            </div>
+            <div class="custom-select-options hidden" id="cat-options"></div>
+          </div>
+        </div>
+        <div class="form-field">
+          <label for="p-barcode">Código de barras</label>
+          <div class="modal-input-wrap"><span id="barcode-icon"></span><input id="p-barcode" inputmode="numeric" maxlength="20" placeholder="Somente números" /></div>
+        </div>
+        <div class="form-field">
+          <label for="p-badge">Selo de destaque (opcional)</label>
+          <div class="modal-input-wrap"><input id="p-badge" maxlength="12" placeholder="Ex.: Novo" /></div>
+        </div>
+      </div>
+      <p class="form-error hidden" id="form-error"></p>
+      <div class="modal-actions">
+        <button class="btn-outline" id="form-cancel">Cancelar</button>
+        <button class="modal-apply" id="form-save">Cadastrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmar exclusão -->
+  <div class="modal-overlay hidden" id="delete-modal">
+    <div class="modal">
+      <h3>Excluir produto</h3>
+      <p style="margin:0;font-family:Georgia,serif;font-size:14px">Tem certeza que deseja remover <strong id="delete-name"></strong> do catálogo?</p>
+      <div class="modal-actions">
+        <button class="btn-outline" id="delete-cancel">Cancelar</button>
+        <button class="modal-apply" id="delete-confirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Início: Bibliotecas do Firebase (Versão Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Fim: Bibliotecas do Firebase -->
+
+  <script src="dados.js"></script>
+  <script src="produtos.js"></script>
+</body>
+</html>

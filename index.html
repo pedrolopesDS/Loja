@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+<body>
+  <main class="page-shell">
+    <div class="app-frame">
+        <div class="sidebar-zone" aria-hidden="true"></div>
+        <aside class="sidebar" aria-label="Main navigation">
+          <div class="brand"><i></i><i></i><i></i></div>
+          <div class="nav-items" id="nav"></div>
+          <button class="nav-button logout-button" id="logout" title="Log Out"></button>
+        </aside>
+
+        <section class="menu-panel">
+          <div class="menu-topline">
+            <div class="heading"><h1 id="title">Menu <span>Categorias</span></h1></div>
+            <div class="search-wrap">
+              <span id="search-icon"></span>
+              <input id="search" aria-label="Search menu" placeholder="Pesquisar Produtos" />
+              <button class="clear-search hidden" id="clear" title="Clear search"></button>
+            </div>
+          </div>
+          <div id="home-view">
+            <div class="category-list" id="categories"></div>
+            <div class="section-heading">
+              <h2>Catálogo de Produtos</h2>
+              <div class="sort-label custom-select-wrapper" id="sort-wrapper">
+                Filtrar
+                <div class="custom-select-trigger" id="sort-trigger" style="display: inline-flex; align-items: center; gap: 4px;">
+                  <input id="sort" type="text" readonly value="Ordem Alfabética" style="cursor: pointer; border: 0; background: transparent; color: var(--foreground); font-family: Georgia, serif; font-size: 12px; width: 155px; outline: none; text-overflow: ellipsis;" />
+                  <span id="chevron" style="pointer-events: none;"></span>
+                </div>
+                <div class="custom-select-options hidden" id="sort-options" style="right: 0; left: auto; min-width: 195px;">
+                  <div class="custom-select-option selected" data-val="Ordem Alfabética">Ordem Alfabética</div>
+                  <div class="custom-select-option" data-val="Preço: Menor para o Maior">Preço: Menor para o Maior</div>
+                  <div class="custom-select-option" data-val="Preço: Maior para o Menor">Preço: Maior para o Menor</div>
+                </div>
+              </div>
+            </div>
+            <div class="product-grid" id="products"></div>
+          </div>
+        </section>
+
+        <aside class="order-panel" id="order-panel" aria-label="Order menu">
+          <div class="order-heading">
+            <h2>Carrinho <span>Atual</span></h2>
+            <div class="order-heading-actions">
+              <button class="icon-btn edit-button" id="invoice-btn" title="Fatura / Recibo"></button>
+              <button class="icon-btn edit-button" id="edit" title="Editar pedido"></button>
+            </div>
+          </div>
+          <div class="order-items" id="order-items"></div>
+          <div class="order-summary">
+            <div><span>Sub Total</span><strong id="subtotal"></strong></div>
+            <div><span>Desconto</span><span id="discount"></span></div>
+          </div>
+          <div class="order-footer">
+            <p class="success-message hidden" id="success">Venda Finalizada!</p>
+            <button class="discount-button" id="discount-btn">Ajuste de Pagamento</button>
+            <button class="charge-button" id="charge"></button>
+          </div>
+        </aside>
+    </div>
+    <button class="mobile-cart-trigger" id="mobile-trigger"></button>
+  </main>
+  
+  <div class="modal-overlay hidden" id="discount-modal">
+    <div class="modal">
+      <h3>Adicionar Desconto</h3>
+      <div class="modal-input-wrap"><span>R$</span><input id="discount-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" /></div>
+      <button class="modal-remove hidden" id="discount-remove">Remove discount</button>
+      <div class="modal-actions">
+        <button class="btn-outline" id="discount-cancel">Cancelar</button>
+        <button class="modal-apply" id="discount-apply">Aplicar</button>
+      </div>
+    </div>
+  </div>
+  
+  <div class="modal-overlay hidden" id="payment-modal">
+    <div class="modal payment-modal">
+      <h3 id="payment-title">Pagamento</h3>
+      <div class="payment-total"><span>Total</span><strong id="payment-total"></strong></div>
+      <div id="payment-body"></div>
+      <div class="modal-actions">
+        <button class="btn-outline" id="payment-cancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  
+  <!-- Início: Bibliotecas do Firebase (Versão Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Fim: Bibliotecas do Firebase -->
+  
+  <script src="dados.js"></script>
+  
+  <!-- O script principal volta a ser carregado normalmente, sem type="module" -->
+  <script src="script.js"></script>
+</body>
+</html>
