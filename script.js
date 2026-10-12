@@ -22,7 +22,7 @@ db.enablePersistence().catch((err) => {
 });
 
 const catImages = { 
-  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/Chicletes.svg", 
   Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
