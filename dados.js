@@ -1,4 +1,21 @@
 // ==========================================
+// CONFIGURAÇÃO GLOBAL E BANCO DE DADOS (SUPABASE)
+// ==========================================
+
+const SUPABASE_URL = "https://aykrfzyktixjwplkmmjk.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5a3JmenlrdGl4andwbGttbWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NTQ5OTgsImV4cCI6MjEwNzIzMDk5OH0.BfulX8WR_EXD83-8JPw2HW7TOhAFx-bqIoCMn9FbkdQ";
+
+// Nome alterado para supabaseClient para não chocar com a biblioteca!
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+// ==========================================
 // DADOS COMPARTILHADOS (usado por index.html e produtos.html)
 // ==========================================
 const paths = {
@@ -40,7 +57,6 @@ const categories = [
   ["Doces", "dessert"], ["Embalagem", "gift"], ["Pirulito", "lollipop"], ["Pote", "pote"], ["Salgadinho", "popcorn"],
 ];
 
-// O seu "quadro em branco": Array global que será populado pelo Firebase em vez do localStorage
 let products = [];
 
 function slugify(text) {
@@ -58,7 +74,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-// Mostra a foto do produto (ou o ícone, se não houver foto)
 function productThumb(p, className) {
   const inner = p.photo ? `<img src="${p.photo}" alt="${escapeHtml(p.name)}">` : p.emoji;
   return `<span class="${className} thumb-media">${inner}</span>`;
