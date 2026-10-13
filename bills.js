@@ -1,17 +1,7 @@
-// 1. Configuração do Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyCtcyBlS2VVj9hSo2QV9mGw8qkWVlgsFZQ",
-  authDomain: "pdv-loja-1.firebaseapp.com",
-  projectId: "pdv-loja-1",
-  storageBucket: "pdv-loja-1.firebasestorage.app",
-  messagingSenderId: "61547421823",
-  appId: "1:61547421823:web:853bbbf3a5f189d1ce9f4a"
-};
-
-// Inicializa a aplicação e ativa o modo offline
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-db.enablePersistence().catch(console.error);
+// ==========================================
+// PÁGINA DE HISTÓRICO DE VENDAS (SUPABASE)
+// ==========================================
+// Nota: A configuração do banco (supabaseClient) agora vive no dados.js
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -40,30 +30,50 @@ function renderNav() {
   ).join("");
 }
 
-// A função agora é assíncrona para aguardar os dados do Firebase
+// ==========================================
+// CARREGAR E RENDERIZAR AS VENDAS
+// ==========================================
 async function renderBills() {
   const panel = $("bills-container");
   panel.innerHTML = '<p class="bills-empty">A carregar vendas...</p>';
   
   try {
-    // Busca todas as vendas no Firebase ordenadas pela data mais recente
-    const snapshot = await db.collection("vendas").orderBy("date", "desc").get();
-    
-    const sales = [];
-    snapshot.forEach(doc => {
-      // Cria o objeto da venda usando o ID gerado pela nuvem
-      sales.push({ id: doc.id, ...doc.data() });
-    });
+    // Busca todas as vendas no Supabase ordenadas pela data (mais recentes primeiro)
+    // O "*, itens_venda(*)" é a magia do PostgreSQL: traz a venda e os itens de dentro dela numa única requisição!
+    const { data, error } = await supabaseClient
+      .from("vendas")
+      .select("*, itens_venda(*)")
+      .order("data_venda", { ascending: false });
+      
+    if (error) throw error;
+
+    // Traduz as colunas do Supabase (Português) para o formato do HTML (Inglês)
+    const sales = (data || []).map(v => ({
+      id: v.id,
+      date: v.data_venda,
+      payment: v.metodo_pagamento,
+      total: parseFloat(v.total),
+      subtotal: parseFloat(v.subtotal),
+      discount: parseFloat(v.desconto),
+      received: v.valor_recebido !== null ? parseFloat(v.valor_recebido) : null,
+      change: v.troco !== null ? parseFloat(v.troco) : null,
+      items: (v.itens_venda || []).map(item => ({
+        name: item.nome_produto,
+        quantity: item.quantidade,
+        price: parseFloat(item.preco_unitario),
+        total: parseFloat(item.total)
+      }))
+    }));
 
     if (sales.length === 0) {
       panel.innerHTML = '<p class="bills-empty">Nenhuma venda finalizada ainda.</p>';
       return;
     }
 
-    const total = roundMoney(sales.reduce((sum, sale) => sum + sale.total, 0));
+    const totalGeral = roundMoney(sales.reduce((sum, sale) => sum + sale.total, 0));
     
     panel.innerHTML = `
-      <div class="section-heading"><h2>Vendas realizadas</h2><span class="bills-count">${sales.length} venda${sales.length === 1 ? "" : "s"} · ${money(total)}</span></div>
+      <div class="section-heading"><h2>Vendas realizadas</h2><span class="bills-count">${sales.length} venda${sales.length === 1 ? "" : "s"} · ${money(totalGeral)}</span></div>
       ${sales.map((sale) => `
         <details class="bill-record">
           <summary>
@@ -81,8 +91,8 @@ async function renderBills() {
           </div>
         </details>`).join("")}`;
   } catch (error) {
-    console.error("Erro ao carregar as vendas do Firebase:", error);
-    panel.innerHTML = '<p class="bills-empty" role="alert">Não foi possível ler o histórico de vendas. Verifique a sua ligação.</p>';
+    console.error("Erro ao carregar as vendas do Supabase:", error);
+    panel.innerHTML = '<p class="bills-empty" role="alert">Não foi possível ler o histórico de vendas. Verifique a sua ligação ao banco de dados.</p>';
   }
 }
 
