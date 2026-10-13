@@ -1,29 +1,12 @@
-// 1. Configuração do Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyCtcyBlS2VVj9hSo2QV9mGw8qkWVlgsFZQ",
-  authDomain: "pdv-loja-1.firebaseapp.com",
-  projectId: "pdv-loja-1",
-  storageBucket: "pdv-loja-1.firebasestorage.app",
-  messagingSenderId: "61547421823",
-  appId: "1:61547421823:web:853bbbf3a5f189d1ce9f4a"
-};
-
-// 2. Inicializa a aplicação Firebase (Versão Compat)
-firebase.initializeApp(firebaseConfig);
-
-// 3. Inicializa o Firestore e ATIVA O MODO OFFLINE
-const db = firebase.firestore();
-db.enablePersistence().catch((err) => {
-  if (err.code == 'failed-precondition') {
-    console.log("Múltiplas abas abertas, persistência offline ativada apenas na primeira.");
-  } else if (err.code == 'unimplemented') {
-    console.log("O navegador atual não suporta persistência offline.");
-  }
-});
+// ==========================================
+// FRENTE DE CAIXA (INTEGRADA AO SUPABASE)
+// ==========================================
+// Nota: A configuração do banco (supabaseClient) e a função generateUUID() 
+// agora vivem no ficheiro dados.js para poderem ser partilhadas com o produtos.js!
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -45,7 +28,7 @@ const navigation = [
 
 // ESTADO GLOBAL DA APLICAÇÃO
 const state = {
-  category: "Bala", 
+  category: "Todas", 
   query: "", 
   sort: "Ordem Alfabética", 
   editing: false, 
@@ -57,7 +40,7 @@ const state = {
 };
 
 // ==========================================
-// 2. UTILITÁRIOS
+// UTILITÁRIOS
 // ==========================================
 const $ = (id) => document.getElementById(id);
 
@@ -74,36 +57,65 @@ function getTotals() {
   return { items, subtotal, discount, total: Math.max(subtotal - discount, 0) };
 }
 
-// ==========================================
-// 3. FUNÇÕES DE RENDERIZAÇÃO E FIREBASE
-// ==========================================
-
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-// Salvar venda utilizando o Firebase Firestore
+// Máscara de dinheiro em tempo real
+function formatCurrencyInput(value) {
+  let v = String(value).replace(/\D/g, ""); 
+  if (!v) return "";
+  v = (parseInt(v, 10) / 100).toFixed(2); 
+  v = v.replace(".", ","); 
+  v = v.replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1."); 
+  return v;
+}
+
+// ==========================================
+// FUNÇÕES DE RENDERIZAÇÃO E SUPABASE
+// ==========================================
+
+// Salvar venda utilizando o Supabase (PostgreSQL RPC)
 async function saveCompletedSale(method, received) {
   if (state.placed) return false;
   const { items, subtotal, discount, total } = getTotals();
   if (!items.length || !method) return false;
   
-  const sale = {
-    date: new Date().toISOString(),
-    items: items.map((product) => ({
-      id: product.id, name: product.name, price: product.price,
-      quantity: state.cart[product.id], total: roundMoney(product.price * state.cart[product.id])
-    })),
-    subtotal: roundMoney(subtotal), discount: roundMoney(discount), total: roundMoney(total),
-    payment: method,
-    received: method === "Dinheiro" ? roundMoney(received) : null,
-    change: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
+  // Usa o crypto.randomUUID nativo do navegador ou a função do dados.js
+  const vendaId = window.crypto ? window.crypto.randomUUID() : generateUUID();
+  const agora = new Date().toISOString();
+
+  // 1. Prepara os dados da Venda
+  const saleData = {
+    id: vendaId,
+    data_venda: agora,
+    subtotal: roundMoney(subtotal),
+    desconto: roundMoney(discount),
+    total: roundMoney(total),
+    metodo_pagamento: method,
+    valor_recebido: method === "Dinheiro" ? roundMoney(received) : null,
+    troco: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
   };
+
+  // 2. Prepara os dados dos Itens da Venda
+  const itemsData = items.map(product => ({
+    id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
+    produto_id: product.id,
+    nome_produto: product.name,
+    quantidade: state.cart[product.id],
+    preco_unitario: product.price,
+    total: roundMoney(product.price * state.cart[product.id])
+  }));
   
   try {
-    // Grava a venda diretamente na coleção "vendas"
-    await db.collection("vendas").add(sale);
+    // Chama a função (RPC) no PostgreSQL que insere a venda e os itens juntos com segurança
+    const { error } = await supabaseClient.rpc('sincronizar_venda_offline', {
+      p_venda: saleData,
+      p_itens: itemsData
+    });
+
+    if (error) throw error;
     return true;
   } catch (error) {
-    console.error("Erro ao guardar a venda no Firebase:", error);
+    console.error("Erro ao guardar a venda no Supabase:", error);
     alert("Ocorreu um erro ao registar a venda. Verifique a consola.");
     return false;
   }
@@ -120,7 +132,15 @@ function renderNavigation() {
 }
 
 function renderCategories() {
-  $("categories").innerHTML = categories.map(([name, ic]) => {
+  // Botão fixo para "Todas" as categorias
+  const btnTodas = `
+    <button class="category-button ${state.category === "Todas" ? "category-active" : ""}" data-cat="Todas">
+      <span class="category-icon">${icon("dashboard", 24)}</span>
+      <span>Todas</span>
+    </button>`;
+
+  // Restante das categorias dinâmicas
+  const btnCategorias = categories.map(([name, ic]) => {
     let iconeVisual = "";
     
     if (catEmojis[name]) {
@@ -136,24 +156,41 @@ function renderCategories() {
       <span>${name}</span>
     </button>`;
   }).join("");
+
+  $("categories").innerHTML = btnTodas + btnCategorias;
 }
 
-// Busca os produtos do Firebase na Frente de Caixa
+// Busca os produtos diretamente da tabela do Supabase
 async function renderProducts() {
   $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
   
   try {
-    const snapshot = await db.collection("produtos").get();
+    const { data, error } = await supabaseClient
+      .from('produtos')
+      .select('*');
+
+    if (error) throw error;
     
-    // Atualiza a variável global
-    products = [];
-    snapshot.forEach(doc => {
-      products.push({ id: doc.id, ...doc.data() });
-    });
+    // O TRADUTOR: Converte as colunas do PostgreSQL para o formato esperado pelo HTML
+    products = (data || []).map(p => ({
+      id: p.id,
+      name: p.nome,
+      price: parseFloat(p.preco),
+      category: p.categoria,
+      barcode: p.codigo_barras,
+      photo: p.foto_url,
+      emoji: p.emoji,
+      badge: p.badge
+    }));
 
     $("clear").classList.toggle("hidden", !state.query);
+    const q = state.query.trim().toLowerCase();
     
-    let visible = products.filter((p) => p.category === state.category && p.name.toLowerCase().includes(state.query.toLowerCase()));
+    // Filtro atualizado para buscar por nome OU código de barras
+    let visible = products.filter((p) => 
+      (state.category === "Todas" || p.category === state.category) && 
+      (!q || p.name.toLowerCase().includes(q) || (p.barcode || "").includes(q))
+    );
     
     if (state.sort === "Ordem Alfabética") {
       visible.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -164,14 +201,14 @@ async function renderProducts() {
     }
   
     $("products").innerHTML = visible.length ? visible.map((p) =>
-      `<button class="product-card" data-add="${p.id}" title="Add ${p.name} to order">
-        <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${p.badge}</span>` : ""}</span>
+      `<button class="product-card" data-add="${p.id}" title="Adicionar ${escapeHtml(p.name)} ao pedido">
+        <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${escapeHtml(p.badge)}</span>` : ""}</span>
         <span class="product-name">${escapeHtml(p.name)}</span><span class="product-price">${money(p.price)}</span>
-      </button>`).join("") : `<p class="empty-products">Nenhum item encontrado.</p>`;
+      </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
       
   } catch (error) {
-    console.error("Erro ao carregar produtos do Firebase:", error);
-    $("products").innerHTML = '<p class="empty-products">Erro ao carregar o catálogo.</p>';
+    console.error("Erro ao carregar produtos do Supabase:", error);
+    $("products").innerHTML = '<p class="empty-products">Erro ao carregar o catálogo. Verifique a ligação.</p>';
   }
 }
 
@@ -184,9 +221,9 @@ function renderCart() {
       <div class="order-thumbnail">${productThumb(p, "food-emoji food-emoji-small")}</div>
       <div class="order-details"><span class="order-name">${escapeHtml(p.name)}</span><span class="order-unit">${money(p.price)}</span></div>
       <div class="order-quantity">
-        ${state.editing ? `<button data-dec="${p.id}" title="Remove one">${icon("minus", 12, 2)}</button>` : ""}
+        ${state.editing ? `<button data-dec="${p.id}" title="Remover um">${icon("minus", 12, 2)}</button>` : ""}
         <span>×${state.cart[p.id]}</span>
-        ${state.editing ? `<button data-add="${p.id}" title="Add one">${icon("plus", 12, 2)}</button>` : ""}
+        ${state.editing ? `<button data-add="${p.id}" title="Adicionar mais um">${icon("plus", 12, 2)}</button>` : ""}
       </div>
       <span class="order-price">${money(p.price * state.cart[p.id])}</span>
     </div>`).join("")
@@ -205,7 +242,7 @@ function renderCart() {
   $("charge").disabled = !count || state.placed;
   
   $("order-panel").classList.toggle("mobile-cart-open", state.mobileCart);
-  $("mobile-trigger").innerHTML = `${icon("bag", 18)} Order (${count}) · ${money(total)} ${icon(state.mobileCart ? "x" : "menu", 16)}`;
+  $("mobile-trigger").innerHTML = `${icon("bag", 18)} Pedido (${count}) · ${money(total)} ${icon(state.mobileCart ? "x" : "menu", 16)}`;
 }
 
 function initStaticIcons() {
@@ -214,7 +251,6 @@ function initStaticIcons() {
   $("chevron").innerHTML = icon("chevron", 14);
   $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
   
-  // INICIALIZAÇÃO DO NOVO ÍCONE DE FATURA
   if ($("invoice-btn")) {
     $("invoice-btn").innerHTML = icon("invoice", 17);
   }
@@ -228,7 +264,7 @@ function renderAll() {
 }
 
 // ==========================================
-// 4. LÓGICA DE NEGÓCIO E EVENTOS
+// LÓGICA DE NEGÓCIO E EVENTOS
 // ==========================================
 
 function updateCart(id, amount) {
@@ -248,7 +284,8 @@ document.addEventListener("click", (e) => {
   if (!t) return;
   
   if (t.dataset.cat) { 
-    state.category = t.dataset.cat; 
+    // Lógica de Toggle: Se clicar na categoria que já está ativa, volta para "Todas"
+    state.category = state.category === t.dataset.cat ? "Todas" : t.dataset.cat; 
     renderCategories();
     renderProducts(); 
   } else if (t.dataset.add) {
@@ -355,7 +392,7 @@ async function gerarFaturaPDF() {
     alert("Não foi possível carregar o gerador de PDF. Verifique sua conexão.");
     return;
   }
-  // Congela os dados para alterações no carrinho não mudarem a cotação durante o carregamento.
+  
   const linhas = items.map((p) => ({ ...p, quantidade: state.cart[p.id] }));
   if (botao) { botao.disabled = true; botao.setAttribute("aria-busy", "true"); }
   try {
@@ -396,7 +433,7 @@ async function gerarFaturaPDF() {
       const identificacao = p.sku || p.barcode || p.id;
       doc.setFont("helvetica", "normal"); doc.setFontSize(8);
       const codigo = identificacao == null ? [] : doc.splitTextToSize(String(identificacao), larguraNome);
-      // Fragmenta somente nomes excepcionalmente extensos, mantendo cada bloco dentro da página.
+      
       const blocos = [
         ...nome.map((text) => ({ text, bold: true, size: 10, color: 35, step: 4.5 })),
         ...codigo.map((text) => ({ text, bold: false, size: 8, color: 145, step: 3.8 }))
@@ -471,16 +508,25 @@ $("mobile-trigger").addEventListener("click", () => {
 });
 
 // ==========================================
-// 5. SISTEMA DE DESCONTO E PAGAMENTO
+// SISTEMA DE DESCONTO E PAGAMENTO
 // ==========================================
 
 const modalDesconto = $("discount-modal");
 
 $("discount-btn").addEventListener("click", () => {
-  $("discount-input").value = state.discount ? state.discount.toFixed(2) : "";
+  const input = $("discount-input");
+  input.type = "text"; // Força o HTML a aceitar texto com vírgula
+  input.inputMode = "numeric";
+  input.value = state.discount ? formatCurrencyInput((state.discount * 100).toFixed(0)) : "";
+  
   $("discount-remove").classList.toggle("hidden", !state.discount);
   modalDesconto.classList.remove("hidden");
-  $("discount-input").focus();
+  input.focus();
+});
+
+// Listener para aplicar a máscara enquanto digita o desconto
+$("discount-input").addEventListener("input", (e) => {
+  e.target.value = formatCurrencyInput(e.target.value);
 });
 
 $("discount-cancel").addEventListener("click", () => modalDesconto.classList.add("hidden"));
@@ -493,7 +539,7 @@ $("discount-remove").addEventListener("click", () => {
 });
 
 function aplicarDesconto() {
-  const inputVal = $("discount-input").value.replace(",", ".");
+  const inputVal = $("discount-input").value.replace(/\./g, "").replace(",", ".");
   const value = parseFloat(inputVal);
   const { subtotal } = getTotals();
   state.discount = isNaN(value) || value <= 0 ? 0 : Math.min(value, subtotal);
@@ -533,15 +579,21 @@ function renderPayment() {
     payBody.innerHTML = `
       <button class="pay-back" data-pay-back>${icon("back", 15)} Voltar</button>
       <label class="pay-cash-label" for="cash-input">Valor recebido</label>
-      <div class="modal-input-wrap pay-cash-input"><span>R$</span><input id="cash-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" /></div>
+      <div class="modal-input-wrap pay-cash-input">
+        <span>R$</span>
+        <input id="cash-input" type="text" inputmode="numeric" placeholder="0,00" />
+      </div>
       <div class="pay-change"><span>Troco</span><strong id="cash-change">${money(0)}</strong></div>
       <button class="charge-button pay-finish" id="pay-finish" disabled>${icon("check", 17)} Finalizar</button>`;
     
     const input = $("cash-input");
     setTimeout(() => input.focus(), 10);
 
-    input.addEventListener("input", () => {
-      const recebidoStr = input.value.replace(",", ".");
+    // Listener para aplicar a máscara enquanto digita o dinheiro recebido
+    input.addEventListener("input", (e) => {
+      e.target.value = formatCurrencyInput(e.target.value);
+
+      const recebidoStr = e.target.value.replace(/\./g, "").replace(",", ".");
       const received = parseFloat(recebidoStr) || 0; 
       const troco = received - total;
       const podeFinalizar = received >= total;
@@ -571,7 +623,6 @@ $("payment-cancel").addEventListener("click", closePayment);
 payModal.addEventListener("click", (e) => { if (e.target === payModal) closePayment(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !payModal.classList.contains("hidden")) closePayment(); });
 
-// Callback alterado para "async" para aguardar a gravação na nuvem
 payBody.addEventListener("click", async (e) => {
   const t = e.target.closest("button");
   if (!t) return;
@@ -589,12 +640,13 @@ payBody.addEventListener("click", async (e) => {
     let received = null;
     
     if (payStep.method === "Dinheiro") {
-      received = parseFloat(($("cash-input").value || "").replace(",", "."));
+      const rawVal = ($("cash-input").value || "").replace(/\./g, "").replace(",", ".");
+      received = parseFloat(rawVal);
       if (!Number.isFinite(received) || received < total) return;
       detail = `Dinheiro · Troco ${money(Math.max(received - total, 0))}`;
     }
     
-    // AWAIT aqui: Aguarda a gravação no Firebase
+    // Aguarda a gravação no Supabase
     const vendaSalva = await saveCompletedSale(payStep.method, received);
     if (!vendaSalva) return;
     
@@ -609,7 +661,60 @@ payBody.addEventListener("click", async (e) => {
 initStaticIcons();
 renderAll();
 
-// Atualiza a tela de vendas quando os produtos mudam em outra aba (no cadastro)
+// Atualiza a tela de vendas quando os produtos mudam noutra aba
 window.addEventListener("storage", (e) => {
   if (e.key === 'pdv:updateTrigger') { renderProducts(); renderCart(); }
+});
+
+// ==========================================
+// SUPORTE GLOBAL PARA LEITOR DE CÓDIGO DE BARRAS
+// ==========================================
+let barcodeBuffer = "";
+let barcodeTimer = null;
+
+document.addEventListener("keydown", (e) => {
+  // Ignora se o operador estiver a digitar num campo sensível
+  if (e.target.tagName === "INPUT" && e.target.id !== "search") {
+    return;
+  }
+
+  // Se a tecla pressionada for o "Enter", processamos o código acumulado
+  if (e.key === "Enter") {
+    if (barcodeBuffer.length >= 4) { 
+      const product = products.find(p => p.barcode === barcodeBuffer);
+      
+      if (product) {
+        updateCart(product.id, 1);
+        
+        const orderPanel = $("order-panel");
+        orderPanel.style.transform = "scale(1.02)";
+        setTimeout(() => orderPanel.style.transform = "scale(1)", 150);
+        
+        if (e.target.id === "search") {
+          $("search").value = "";
+          state.query = "";
+          renderProducts();
+          e.target.blur(); 
+        }
+      } else {
+        alert("Produto não encontrado: " + barcodeBuffer);
+      }
+    }
+    
+    barcodeBuffer = "";
+    clearTimeout(barcodeTimer);
+    return;
+  }
+
+  // Se for um número, adiciona ao "buffer"
+  if (/^\d$/.test(e.key)) {
+    barcodeBuffer += e.key;
+    
+    clearTimeout(barcodeTimer);
+    barcodeTimer = setTimeout(() => {
+      barcodeBuffer = "";
+    }, 50); 
+  } else {
+    barcodeBuffer = "";
+  }
 });
