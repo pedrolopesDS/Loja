@@ -1,29 +1,15 @@
 // ==========================================
-// PÁGINA DE CADASTRO DE PRODUTOS (INTEGRADA AO FIREBASE E CLOUDINARY)
+// PÁGINA DE CADASTRO DE PRODUTOS (SUPABASE + CLOUDINARY)
 // ==========================================
+// Nota: A configuração do banco (supabaseClient) agora vive no dados.js
 
-// 1. Configuração do Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyCtcyBlS2VVj9hSo2QV9mGw8qkWVlgsFZQ",
-  authDomain: "pdv-loja-1.firebaseapp.com",
-  projectId: "pdv-loja-1",
-  storageBucket: "pdv-loja-1.firebasestorage.app",
-  messagingSenderId: "61547421823",
-  appId: "1:61547421823:web:853bbbf3a5f189d1ce9f4a"
-};
-
-// Inicializa a aplicação e ativa o modo offline
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-db.enablePersistence().catch(console.error);
-
-// 2. CONFIGURAÇÃO DO CLOUDINARY (Preencha com os seus dados)
+// 1. CONFIGURAÇÃO DO CLOUDINARY
 // -----------------------------------------------------------
 const CLOUD_NAME = "dh548byjf"; 
 const UPLOAD_PRESET = "pdv_uploads"; 
 // -----------------------------------------------------------
 
-// 3. DADOS DE ÍCONES E EMOJIS (Essenciais para o salvamento)
+// 2. DADOS DE ÍCONES E EMOJIS
 const catImages = { 
   Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
   Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
@@ -58,17 +44,25 @@ function renderNav() {
   ).join("");
 }
 
-// ---------- Lista ----------
+// ---------- Lista (Supabase) ----------
 async function renderList() {
   $("list").innerHTML = '<p class="admin-empty">A carregar catálogo...</p>';
   
   try {
-    const snapshot = await db.collection("produtos").get();
+    const { data, error } = await supabaseClient.from('produtos').select('*');
+    if (error) throw error;
     
-    products = [];
-    snapshot.forEach(doc => {
-      products.push({ id: doc.id, ...doc.data() });
-    });
+    // Transforma as colunas do Supabase (Português) no formato que o seu JS já usa (Inglês)
+    products = (data || []).map(p => ({
+      id: p.id,
+      name: p.nome,
+      price: parseFloat(p.preco),
+      category: p.categoria,
+      barcode: p.codigo_barras,
+      photo: p.foto_url,
+      emoji: p.emoji,
+      badge: p.badge
+    }));
 
     $("clear").classList.toggle("hidden", !page.query);
     const q = page.query.trim().toLowerCase();
@@ -159,7 +153,7 @@ const closeForm = () => {
   $("form-save").textContent = page.editingId ? "Salvar" : "Cadastrar";
 };
 
-// Nova função exclusiva para upload para o Cloudinary
+// Upload para o Cloudinary (Mantido intacto)
 async function uploadToCloudinary(base64Image) {
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
   const formData = new FormData();
@@ -171,15 +165,13 @@ async function uploadToCloudinary(base64Image) {
     body: formData
   });
 
-  if (!response.ok) {
-    throw new Error("Falha ao enviar imagem para o Cloudinary");
-  }
+  if (!response.ok) throw new Error("Falha ao enviar imagem para o Cloudinary");
 
   const data = await response.json();
   return data.secure_url; 
 }
 
-// Envia os dados para o Firebase
+// Salvar no Supabase
 async function saveForm() {
   const name = $("p-name").value.trim();
   const priceRaw = $("p-price").value.replace(/\./g, "").replace(",", "."); 
@@ -196,7 +188,6 @@ async function saveForm() {
   if (barcode && products.some((p) => p.barcode === barcode && p.id !== page.editingId))
     return showError("Já existe um produto com esse código de barras");
 
-  // Apanha o emoji correto da categoria
   const catRef = categories.find(([c]) => c === category);
   const emojiStr = catEmojis[category] ? catEmojis[category] : (catImages[category] ? "" : (catRef ? icon(catRef[1], 24) : ""));
 
@@ -214,21 +205,26 @@ async function saveForm() {
 
     btn.textContent = "A gravar produto...";
 
-    const data = { 
-      name, 
-      price: Math.round(price * 100) / 100, 
-      category, 
+    // Prepara o objeto com os nomes exatos das colunas do Supabase
+    const dbData = { 
+      nome: name, 
+      preco: Math.round(price * 100) / 100, 
+      categoria: category, 
       emoji: emojiStr 
     };
     
-    if (barcode) data.barcode = barcode;
-    if (badge) data.badge = badge;
-    if (finalPhotoUrl) data.photo = finalPhotoUrl; // Salva o link do Cloudinary
+    if (barcode) dbData.codigo_barras = barcode;
+    if (badge) dbData.badge = badge;
+    if (finalPhotoUrl) dbData.foto_url = finalPhotoUrl; // Salva o link do Cloudinary
 
     if (page.editingId) {
-      await db.collection("produtos").doc(page.editingId).set(data);
+      // Atualiza produto existente
+      const { error } = await supabaseClient.from('produtos').update(dbData).eq('id', page.editingId);
+      if (error) throw error;
     } else {
-      await db.collection("produtos").add(data);
+      // Insere novo produto
+      const { error } = await supabaseClient.from('produtos').insert([dbData]);
+      if (error) throw error;
     }
     
     closeForm();
@@ -237,7 +233,7 @@ async function saveForm() {
     
   } catch (error) {
     console.error("Erro ao guardar o produto:", error);
-    showError("Erro na ligação ao servidor de imagens/banco.");
+    showError("Erro na ligação ao banco de dados.");
     btn.disabled = false;
     btn.textContent = page.editingId ? "Salvar" : "Cadastrar";
   }
@@ -313,13 +309,16 @@ $("form-modal").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.
 const closeDelete = () => $("delete-modal").classList.add("hidden");
 $("delete-cancel").addEventListener("click", closeDelete);
 
+// Apagar no Supabase
 $("delete-confirm").addEventListener("click", async () => {
   const btn = $("delete-confirm");
   btn.disabled = true;
   btn.textContent = "A apagar...";
   
   try {
-    await db.collection("produtos").doc(page.removingId).delete();
+    const { error } = await supabaseClient.from('produtos').delete().eq('id', page.removingId);
+    if (error) throw error;
+    
     closeDelete();
     await renderList();
     localStorage.setItem("pdv:updateTrigger", Date.now().toString());
