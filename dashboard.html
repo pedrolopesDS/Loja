@@ -6,6 +6,39 @@
   <title>PDV — Dashboard</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="favicon.png" />
+  <style>
+    .dash { padding: 32px 40px; overflow-y: auto; width: 100%; }
+    .dash-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+    
+    /* A regra da fonte Georgia foi removida daqui para herdar o padrão elegante do sistema */
+    
+    .dash-periods { display: flex; gap: 6px; }
+    .dash-periods button { border: 1px solid var(--border); background: var(--surface); padding: 8px 14px; border-radius: 8px; cursor: pointer; color: var(--foreground); }
+    .dash-periods button.active { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: 0 6px 18px var(--shadow); }
+    .kpi small { color: var(--muted-foreground); font-size: 13px; }
+    .kpi strong { display: block; font-size: 26px; margin-top: 6px; }
+    .kpi.hl { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+    .kpi.hl small { color: inherit; opacity: .85; }
+    .dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .dash-grid { grid-template-columns: 1fr; } .dash { padding: 20px; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+    .card h3 { margin: 0 0 14px; font-size: 15px; }
+    .chart { display: flex; align-items: flex-end; gap: 6px; height: 220px; border-bottom: 1px solid var(--border); }
+    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+    .bar { width: 100%; max-width: 38px; background: var(--primary); border-radius: 6px 6px 0 0; min-height: 2px; transition: height .4s; }
+    .bar-col:hover .bar { opacity: .75; }
+    .bar-labels { display: flex; gap: 6px; margin-top: 6px; }
+    .bar-labels span { flex: 1; text-align: center; font-size: 10px; color: var(--muted-foreground); overflow: hidden; white-space: nowrap; }
+    .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .rank li { font-size: 13px; }
+    .rank .row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+    .rank .track { height: 6px; background: var(--muted); border-radius: 6px; overflow: hidden; }
+    .rank .fill { height: 100%; background: var(--hot); }
+    .pay .fill { background: var(--primary); }
+    .empty { color: var(--muted-foreground); font-size: 13px; }
+  </style>
 </head>
 <body>
   <main class="page-shell">
@@ -17,16 +50,32 @@
         <button class="nav-button logout-button" id="logout" title="Log Out"></button>
       </aside>
 
-      <section class="menu-panel" style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
-        <div class="alternate-panel" id="alt-view" style="text-align: center;">
-            <span class="alternate-icon" id="alt-icon"></span>
-            <h2 id="alt-title">Dashboard</h2>
-            <p id="alt-text">Tudo pronto para começar! Registre sua primeira venda para começar a acompanhar seus resultados de hoje.</p>
-            <a href="index.html" class="btn-outline" style="text-decoration: none;">Nova Venda</a>
+      <section class="menu-panel dash">
+        <div class="dash-top">
+          <!-- A classe heading garante que fica 100% igual à página de Produtos -->
+          <div class="heading">
+            <h1>Dashboard <span>Estatísticas</span></h1>
+          </div>
+          
+          <div class="dash-periods" id="periods">
+            <button data-days="1">Hoje</button>
+            <button data-days="7" class="active">7 dias</button>
+            <button data-days="30">30 dias</button>
+            <button data-days="0">Tudo</button>
+          </div>
+        </div>
+        <div class="kpis" id="kpis"><p class="empty">A carregar estatísticas...</p></div>
+        <div class="dash-grid">
+          <div class="card"><h3 id="chart-title">Faturamento por dia</h3><div id="chart"></div></div>
+          <div class="card"><h3>Formas de pagamento</h3><ul class="rank pay" id="payments"></ul></div>
+          <div class="card"><h3>Produtos mais vendidos</h3><ul class="rank" id="top"></ul></div>
+          <div class="card"><h3>Vendas por hora</h3><div id="hours"></div></div>
         </div>
       </section>
     </div>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="dados.js"></script>
   <script src="dashboard.js"></script>
 </body>
