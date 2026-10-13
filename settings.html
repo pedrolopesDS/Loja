@@ -10,31 +10,42 @@
 <body>
   <main class="page-shell">
     <div class="app-frame app-frame-single">
-      
-      <!-- Área invisível para expandir a barra lateral ao passar o mouse -->
       <div class="sidebar-zone" aria-hidden="true"></div>
-      
-      <!-- Barra lateral (Menu) -->
       <aside class="sidebar" aria-label="Main navigation">
         <div class="brand"><i></i><i></i><i></i></div>
         <div class="nav-items" id="nav"></div>
         <button class="nav-button logout-button" id="logout" title="Log Out"></button>
       </aside>
 
-      <!-- Painel Principal (Centralizado) -->
-      <section class="menu-panel" style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
-        <div class="alternate-panel" id="alt-view" style="text-align: center;">
-            <span class="alternate-icon" id="alt-icon"></span>
-            <h2 id="alt-title">Configurações</h2>
-            <p id="alt-text">Ajuste as preferências do seu sistema, gerencie impressoras e taxas aqui em breve.</p>
-            <a href="index.html" class="btn-outline" style="text-decoration: none;">Voltar para o Caixa</a>
-        </div>
+      <section class="menu-panel" style="display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px;">
+         <h2>Configurações do Sistema</h2>
+         <p style="color: var(--muted-foreground); margin-bottom: 12px;">Nenhuma configuração disponível no momento.</p>
+         <a href="index.html" class="btn-outline" style="text-decoration: none; padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);">Voltar para Caixa</a>
       </section>
-
     </div>
   </main>
   
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="dados.js"></script>
-  <script src="settings.js"></script>
+  
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const icon = (name, size = 24, stroke = 1.5) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+    
+    const navigation = [
+      ["Home", "bag", "index.html"], ["Produtos", "box", "produtos.html"], 
+      ["Dashboard", "dashboard", "dashboard.html"], ["Messages", "message", "messages.html"], 
+      ["Bills", "receipt", "bills.html"], ["Setting", "settings", "settings.html"]
+    ];
+
+    $("nav").innerHTML = navigation.map(([name, ic, href]) =>
+      `<a class="nav-button ${name === "Setting" ? "nav-button-active" : ""}" href="${href}" title="${name}">
+        ${icon(ic)}<span>${name}</span>
+      </a>`
+    ).join("");
+
+    $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
+    $("logout").addEventListener("click", () => window.location.href = "index.html");
+  </script>
 </body>
 </html>
