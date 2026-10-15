@@ -9,16 +9,6 @@ const CLOUD_NAME = "dh548byjf";
 const UPLOAD_PRESET = "pdv_uploads"; 
 // -----------------------------------------------------------
 
-// 2. DADOS DE ÍCONES E EMOJIS
-const catImages = { 
-  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
-  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
-};
-
-const catEmojis = {
-  Bala: "🍬", Chocolate: "🍫", Pirulito: "🍭", Pote: "🫙"
-};
-
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 const icon = (name, size = 24, stroke = 1.5) =>
@@ -60,7 +50,6 @@ async function renderList() {
       category: p.categoria,
       barcode: p.codigo_barras,
       photo: p.foto_url,
-      emoji: p.emoji,
       badge: p.badge
     }));
 
@@ -96,7 +85,9 @@ async function renderList() {
 // ---------- Formulário ----------
 function renderPhoto() {
   const f = page.form;
-  $("photo-preview").innerHTML = f.photo ? `<img src="${f.photo}" alt="Foto do produto">` : f.emoji;
+  $("photo-preview").innerHTML = f.photo
+    ? `<img src="${f.photo}" alt="Foto do produto">`
+    : icon("box", 32);
   
   $("photo-pick").classList.toggle("hidden", Boolean(f.photo));
   $("photo-remove").classList.toggle("hidden", !f.photo);
@@ -125,7 +116,7 @@ function formatBarcodeInput(value) {
 
 function openForm(p) {
   page.editingId = p ? p.id : null;
-  page.form = { emoji: p ? p.emoji : "🍬", photo: p ? p.photo || "" : "" };
+  page.form = { photo: p ? p.photo || "" : "" };
   $("form-title").textContent = p ? "Editar Produto" : "Novo Produto";
   $("form-save").textContent = p ? "Salvar" : "Cadastrar";
   $("p-name").value = p ? p.name : "";
@@ -188,9 +179,6 @@ async function saveForm() {
   if (barcode && products.some((p) => p.barcode === barcode && p.id !== page.editingId))
     return showError("Já existe um produto com esse código de barras");
 
-  const catRef = categories.find(([c]) => c === category);
-  const emojiStr = catEmojis[category] ? catEmojis[category] : (catImages[category] ? "" : (catRef ? icon(catRef[1], 24) : ""));
-
   const btn = $("form-save");
   btn.disabled = true;
 
@@ -205,17 +193,15 @@ async function saveForm() {
 
     btn.textContent = "A gravar produto...";
 
-    // Prepara o objeto com os nomes exatos das colunas do Supabase
+    // Prepara o objeto com os nomes exatos das colunas do Supabase (sem emoji)
     const dbData = { 
       nome: name, 
       preco: Math.round(price * 100) / 100, 
-      categoria: category, 
-      emoji: emojiStr 
+      categoria: category,
+      codigo_barras: barcode || null,
+      badge: badge || null,
+      foto_url: finalPhotoUrl || null
     };
-    
-    if (barcode) dbData.codigo_barras = barcode;
-    if (badge) dbData.badge = badge;
-    if (finalPhotoUrl) dbData.foto_url = finalPhotoUrl; // Salva o link do Cloudinary
 
     if (page.editingId) {
       // Atualiza produto existente
