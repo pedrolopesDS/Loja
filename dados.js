@@ -75,6 +75,7 @@ function escapeHtml(s) {
 }
 
 function productThumb(p, className) {
-  const inner = p.photo ? `<img src="${p.photo}" alt="${escapeHtml(p.name)}">` : p.emoji;
+  const fallbackIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted-foreground);">${paths.box}</svg>`;
+  const inner = p.photo ? `<img src="${p.photo}" alt="${escapeHtml(p.name)}">` : fallbackIcon;
   return `<span class="${className} thumb-media">${inner}</span>`;
 }
