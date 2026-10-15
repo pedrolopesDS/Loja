@@ -5,8 +5,8 @@
 // agora vivem no ficheiro dados.js para poderem ser partilhadas com o produtos.js!
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -37,6 +37,7 @@ const state = {
   discount: 0, 
   paymentDetail: null,
   cart: {}, 
+  cartOrder: [], // Guarda a ordem em que os produtos foram adicionados (mais recente no topo)
 };
 
 // ==========================================
@@ -51,7 +52,11 @@ const icon = (name, size = 24, stroke = 1.5) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 
 function getTotals() {
-  const items = products.filter((p) => (state.cart[p.id] || 0) > 0);
+  // Monta os itens respeitando a ordem de inserção no carrinho (state.cartOrder)
+  const items = state.cartOrder
+    .map((id) => products.find((p) => String(p.id) === String(id)))
+    .filter((p) => p && (state.cart[p.id] || 0) > 0);
+
   const subtotal = items.reduce((s, p) => s + p.price * state.cart[p.id], 0);
   const discount = Math.min(state.discount, subtotal);
   return { items, subtotal, discount, total: Math.max(subtotal - discount, 0) };
@@ -179,7 +184,6 @@ async function renderProducts() {
       category: p.categoria,
       barcode: p.codigo_barras,
       photo: p.foto_url,
-      emoji: p.emoji,
       badge: p.badge
     }));
 
@@ -267,16 +271,36 @@ function renderAll() {
 // LÓGICA DE NEGÓCIO E EVENTOS
 // ==========================================
 
-function updateCart(id, amount) {
+function updateCart(id, amount, fromCartEdit = false) {
   if (state.placed) {
     state.cart = {};
+    state.cartOrder = [];
     state.discount = 0;
     state.editing = false;
   }
-  state.cart[id] = Math.max(0, (state.cart[id] || 0) + amount);
+
+  const newQty = Math.max(0, (state.cart[id] || 0) + amount);
+  state.cart[id] = newQty;
+
+  if (newQty <= 0) {
+    delete state.cart[id];
+    state.cartOrder = state.cartOrder.filter((itemId) => String(itemId) !== String(id));
+  } else if (amount > 0) {
+    // Se foi adicionado pelo catálogo/leitor (ou ainda não estava na lista), coloca no topo
+    const exists = state.cartOrder.some((itemId) => String(itemId) === String(id));
+    if (!fromCartEdit || !exists) {
+      state.cartOrder = [id, ...state.cartOrder.filter((itemId) => String(itemId) !== String(id))];
+    }
+  }
+
   state.placed = false;
   state.paymentDetail = null;
   renderCart();
+
+  // Rola a lista de itens do carrinho para o topo quando um produto é adicionado fora do modo edição
+  if (amount > 0 && !fromCartEdit && $("order-items")) {
+    $("order-items").scrollTop = 0;
+  }
 }
 
 document.addEventListener("click", (e) => {
@@ -289,9 +313,10 @@ document.addEventListener("click", (e) => {
     renderCategories();
     renderProducts(); 
   } else if (t.dataset.add) {
-    updateCart(t.dataset.add, 1);
+    const isInsideCart = Boolean(t.closest("#order-items"));
+    updateCart(t.dataset.add, 1, isInsideCart);
   } else if (t.dataset.dec) {
-    updateCart(t.dataset.dec, -1);
+    updateCart(t.dataset.dec, -1, true);
   }
 });
 
@@ -673,48 +698,67 @@ let barcodeBuffer = "";
 let barcodeTimer = null;
 
 document.addEventListener("keydown", (e) => {
-  // Ignora se o operador estiver a digitar num campo sensível
-  if (e.target.tagName === "INPUT" && e.target.id !== "search") {
+  // Ignora apenas se o operador estiver digitando nos campos de valor dos modais abertos
+  const activeId = document.activeElement ? document.activeElement.id : "";
+  if (activeId === "discount-input" || activeId === "cash-input") {
     return;
   }
 
-  // Se a tecla pressionada for o "Enter", processamos o código acumulado
-  if (e.key === "Enter") {
-    if (barcodeBuffer.length >= 4) { 
-      const product = products.find(p => p.barcode === barcodeBuffer);
-      
+  // Ignora teclas modificadoras enviadas por alguns leitores para não zerar o buffer
+  if (["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "Unidentified"].includes(e.key)) {
+    return;
+  }
+
+  // Finaliza a leitura ao receber Enter ou Tab do leitor
+  if (e.key === "Enter" || e.key === "Tab") {
+    const code = barcodeBuffer.trim();
+
+    if (code.length >= 4) {
+      // Impede que o Enter clique acidentalmente em botões focados na tela
+      e.preventDefault();
+      e.stopPropagation();
+
+      const product = products.find(
+        (p) => String(p.barcode || "").trim() === code
+      );
+
       if (product) {
         updateCart(product.id, 1);
-        
+
         const orderPanel = $("order-panel");
         orderPanel.style.transform = "scale(1.02)";
-        setTimeout(() => orderPanel.style.transform = "scale(1)", 150);
-        
-        if (e.target.id === "search") {
+        setTimeout(() => (orderPanel.style.transform = "scale(1)"), 150);
+
+        // Se o campo de pesquisa estava focado e recebeu os números, limpa-o
+        if (activeId === "search" || $("search").value) {
           $("search").value = "";
           state.query = "";
           renderProducts();
-          e.target.blur(); 
+          $("search").blur();
         }
       } else {
-        alert("Produto não encontrado: " + barcodeBuffer);
+        alert("Produto não encontrado: " + code);
       }
+
+      barcodeBuffer = "";
+      clearTimeout(barcodeTimer);
+      return;
     }
-    
+
     barcodeBuffer = "";
     clearTimeout(barcodeTimer);
     return;
   }
 
-  // Se for um número, adiciona ao "buffer"
-  if (/^\d$/.test(e.key)) {
+  // Acumula dígitos (e letras, caso haja códigos EAN/SKU alfanuméricos)
+  if (/^[0-9a-zA-Z]$/.test(e.key)) {
     barcodeBuffer += e.key;
-    
+
     clearTimeout(barcodeTimer);
     barcodeTimer = setTimeout(() => {
       barcodeBuffer = "";
-    }, 50); 
+    }, 200); // 200ms acomoda o intervalo antes do Enter do leitor sem confundir com digitação manual
   } else {
     barcodeBuffer = "";
   }
-});
+}, true);
