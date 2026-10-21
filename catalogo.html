@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV — Catálogo de Produtos</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+<body>
+  <main class="page-shell">
+    <div class="app-frame app-frame-single">
+      <div class="sidebar-zone" aria-hidden="true"></div>
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand"><i></i><i></i><i></i></div>
+        <div class="nav-items" id="nav"></div>
+        <button class="nav-button logout-button" id="logout" title="Log Out"></button>
+      </aside>
+
+      <section class="menu-panel">
+        <div class="menu-topline">
+          <div class="heading"><h1 id="title">Menu <span>Categorias</span></h1></div>
+          <div class="search-wrap">
+            <span id="search-icon"></span>
+            <input id="search" aria-label="Search menu" placeholder="Pesquisar Produtos" />
+            <button class="clear-search hidden" id="clear" title="Clear search"></button>
+          </div>
+        </div>
+        <div id="home-view">
+          <div class="category-list" id="categories"></div>
+          <div class="section-heading">
+            <h2>Catálogo de Produtos</h2>
+            <div class="sort-label custom-select-wrapper" id="sort-wrapper">
+              Filtrar
+              <div class="custom-select-trigger" id="sort-trigger" style="display: inline-flex; align-items: center; gap: 4px;">
+                <input id="sort" type="text" readonly value="Ordem Alfabética" style="cursor: pointer; border: 0; background: transparent; color: var(--foreground); font-family: Georgia, serif; font-size: 12px; width: 155px; outline: none; text-overflow: ellipsis;" />
+                <span id="chevron" style="pointer-events: none;"></span>
+              </div>
+              <div class="custom-select-options hidden" id="sort-options" style="right: 0; left: auto; min-width: 195px;">
+                <div class="custom-select-option selected" data-val="Ordem Alfabética">Ordem Alfabética</div>
+                <div class="custom-select-option" data-val="Preço: Menor para o Maior">Preço: Menor para o Maior</div>
+                <div class="custom-select-option" data-val="Preço: Maior para o Menor">Preço: Maior para o Menor</div>
+              </div>
+            </div>
+          </div>
+          <div class="product-grid" id="products"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Banco de Dados Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="dados.js"></script>
+  <script src="catalogo.js"></script>
+</body>
+</html>
