@@ -1,5 +1,5 @@
 // ==========================================
-// PÁGINA DE CATÁLOGO (SOMENTE VISUALIZAÇÃO)
+// PÁGINA PÚBLICA DE CATÁLOGO (SOMENTE VISUALIZAÇÃO)
 // ==========================================
 // Nota: A configuração do banco (supabaseClient) vive no ficheiro dados.js
 
@@ -15,15 +15,6 @@ const catEmojis = {
   Pote: "🫙"
 };
 
-const navigation = [
-  ["Home", "bag", "index.html"], 
-  ["Produtos", "box", "produtos.html"], 
-  ["Dashboard", "dashboard", "dashboard.html"], 
-  ["Messages", "message", "messages.html"], 
-  ["Bills", "receipt", "bills.html"], 
-  ["Setting", "settings", "settings.html"]
-];
-
 const state = {
   category: "Todas", 
   query: "", 
@@ -37,17 +28,6 @@ const money = (n) => moneyFormatter.format(n);
 
 const icon = (name, size = 24, stroke = 1.5) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
-
-function renderNavigation() {
-  if (!$("nav")) return;
-  $("nav").innerHTML = navigation.map(([name, ic, href]) => {
-    return `<a class="nav-button" href="${href}" title="${name}">
-              ${icon(ic)}<span>${name}</span>
-            </a>`;
-  }).join("");
-
-  $("title").innerHTML = "Menu <span>Categorias</span>";
-}
 
 function renderCategories() {
   const btnTodas = `
@@ -133,9 +113,6 @@ function initStaticIcons() {
   $("search-icon").innerHTML = icon("search", 17, 1.7);
   $("clear").innerHTML = icon("x", 14);
   $("chevron").innerHTML = icon("chevron", 14);
-  if ($("logout")) {
-    $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
-  }
 }
 
 // ==========================================
@@ -189,12 +166,6 @@ $("clear").addEventListener("click", () => {
   renderProductsList(); 
 });
 
-if ($("logout")) {
-  $("logout").addEventListener("click", () => { 
-    window.location.href = "index.html"; 
-  });
-}
-
 // Atualiza automaticamente caso algum produto seja alterado noutra aba
 window.addEventListener("storage", (e) => {
   if (e.key === "pdv:updateTrigger") {
@@ -203,6 +174,5 @@ window.addEventListener("storage", (e) => {
 });
 
 initStaticIcons();
-renderNavigation();
 renderCategories();
 loadAndRenderProducts();
