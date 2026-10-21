@@ -4,8 +4,8 @@
 // Nota: A configuração do banco (supabaseClient) vive no ficheiro dados.js
 
 const catImages = { 
-  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
-  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
+  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
+  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
 };
 
 const catEmojis = {
