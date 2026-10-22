@@ -9,7 +9,7 @@
 </head>
 <body>
   <main class="page-shell">
-    <div class="app-frame app-frame-single">
+    <div class="app-frame">
       <section class="menu-panel">
         <div class="menu-topline">
           <div class="heading"><h1 id="title">Menu <span>Categorias</span></h1></div>
@@ -22,7 +22,7 @@
         <div id="home-view">
           <div class="category-list" id="categories"></div>
           <div class="section-heading">
-            <h2>Catalogo de Produtos</h2>
+            <h2>Catálogo de Produtos</h2>
             <div class="sort-label custom-select-wrapper" id="sort-wrapper">
               Filtrar
               <div class="custom-select-trigger" id="sort-trigger" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -39,12 +39,38 @@
           <div class="product-grid" id="products"></div>
         </div>
       </section>
-    </div>
-  </main>
 
+      <aside class="order-panel" id="order-panel" aria-label="Order menu">
+        <div class="order-heading">
+          <h2>Carrinho <span>Atual</span></h2>
+        </div>
+        <div class="order-items" id="order-items"></div>
+        <div class="order-summary">
+          <div><span>Total</span><strong id="subtotal"></strong></div>
+        </div>
+        <div class="order-footer">
+          <p class="success-message hidden" id="success">Pedido Finalizado!</p>
+          <button class="charge-button" id="charge"></button>
+        </div>
+      </aside>
+    </div>
+    <button class="mobile-cart-trigger" id="mobile-trigger"></button>
+  </main>
+  
+  <div class="modal-overlay hidden" id="payment-modal">
+    <div class="modal payment-modal">
+      <h3 id="payment-title">Pagamento</h3>
+      <div class="payment-total"><span>Total</span><strong id="payment-total"></strong></div>
+      <div id="payment-body"></div>
+      <div class="modal-actions">
+        <button class="btn-outline" id="payment-cancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  
   <!-- Banco de Dados Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+  
   <script src="dados.js"></script>
   <script src="catalogo.js"></script>
 </body>
