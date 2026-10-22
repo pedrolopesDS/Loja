@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDV — Mensagens</title>
+  <title>PDV — Pedidos do Catálogo</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="favicon.png" />
 </head>
@@ -17,36 +17,17 @@
         <button class="nav-button logout-button" id="logout" title="Log Out"></button>
       </aside>
 
-      <section class="menu-panel" style="display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px;">
-         <h2>Messages</h2>
-         <p style="color: var(--muted-foreground); margin-bottom: 12px;">Nenhuma mensagem registrada no momento.</p>
-         <a href="index.html" class="btn-outline" style="text-decoration: none; padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border); color: var(--primary);">Nova Venda</a>
+      <section class="menu-panel">
+        <!-- Container onde os pedidos enviados pelo catálogo serão listados -->
+        <div id="messages-container"></div>
       </section>
     </div>
   </main>
   
-  <!-- Banco de Dados Supabase e Ícones Globais -->
+  <!-- Banco de Dados Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="dados.js"></script>
   
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const icon = (name, size = 24, stroke = 1.5) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
-    
-    const navigation = [
-      ["Home", "bag", "index.html"], ["Produtos", "box", "produtos.html"], 
-      ["Dashboard", "dashboard", "dashboard.html"], ["Messages", "message", "messages.html"], 
-      ["Bills", "receipt", "bills.html"], ["Setting", "settings", "settings.html"]
-    ];
-
-    $("nav").innerHTML = navigation.map(([name, ic, href]) =>
-      `<a class="nav-button ${name === "Messages" ? "nav-button-active" : ""}" href="${href}" title="${name}">
-        ${icon(ic)}<span>${name}</span>
-      </a>`
-    ).join("");
-
-    $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
-    $("logout").addEventListener("click", () => window.location.href = "index.html");
-  </script>
+  <script src="dados.js"></script>
+  <script src="messages.js"></script>
 </body>
 </html>
