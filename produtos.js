@@ -187,11 +187,11 @@ async function saveForm() {
 
     // Se há foto e é nova (Base64), manda para o Cloudinary
     if (finalPhotoUrl && finalPhotoUrl.startsWith("data:image")) {
-      btn.textContent = "A enviar foto...";
+      btn.textContent = "Armazenando imagem...";
       finalPhotoUrl = await uploadToCloudinary(finalPhotoUrl);
     }
 
-    btn.textContent = "A gravar produto...";
+    btn.textContent = "Armazenando produto...";
 
     // Prepara o objeto com os nomes exatos das colunas do Supabase (sem emoji)
     const dbData = { 
