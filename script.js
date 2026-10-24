@@ -108,7 +108,6 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const codigoCurto = String(vendaId).slice(-8).toUpperCase();
 
-  // Usa blocos <div> com break-inside: avoid para nunca cortar um produto ao meio nem repetir cabeçalho
   const linhasHtml = items.map((p) => {
     const qtd = p.isCustom ? 1 : state.cart[p.id];
     const unit = money(p.price);
@@ -138,130 +137,140 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       margin: 0;
       padding: 0;
     }
-    body {
-      font-family: "Courier New", Courier, monospace;
-      font-size: 9px;
-      line-height: 1.2;
-      color: #000;
+    html, body {
+      width: 58mm;
       background: #fff;
-      width: 48mm;
-      max-width: 48mm;
-      margin: 0 auto;
-      padding: 1.5mm 1mm 4mm;
+      color: #000;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      line-height: 1.2;
+      -webkit-print-color-adjust: exact;
+    }
+    /* 6.5mm de recuo lateral mantém tudo dentro dos 45mm centrais da cabeça térmica */
+    .ticket {
+      width: 100%;
+      padding: 2mm 6.5mm 4mm 6.5mm;
     }
     .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .title { font-size: 10px; font-weight: bold; line-height: 1.15; }
-    .subtitle { font-size: 8.5px; }
+    .bold { font-weight: 700; }
+    .title { font-size: 8.5px; font-weight: 700; line-height: 1.15; }
+    .subtitle { font-size: 7.5px; }
     .divider {
       border-top: 1px dashed #000;
-      margin: 3px 0;
+      margin: 2.5px 0;
     }
     .row {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 4px;
+      width: 100%;
+    }
+    .row span:last-child {
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .header-cols {
-      font-size: 8.5px;
-      font-weight: bold;
+      font-size: 7.5px;
+      font-weight: 700;
       margin-bottom: 2px;
     }
     .item {
-      margin-bottom: 3px;
+      margin-bottom: 2.5px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
     .item-name {
-      font-weight: bold;
-      font-size: 9px;
+      font-weight: 700;
+      font-size: 8px;
       word-wrap: break-word;
       overflow-wrap: anywhere;
     }
     .item-values {
-      font-size: 8.5px;
+      font-size: 7.5px;
     }
     .totals-section, .payment-section {
       page-break-inside: avoid;
       break-inside: avoid;
     }
     .totals-row {
-      font-size: 9px;
-      padding: 1px 0;
+      font-size: 8px;
+      padding: 0.5px 0;
     }
     .total-final {
-      font-size: 10.5px;
-      font-weight: bold;
-      padding-top: 2px;
+      font-size: 9px;
+      font-weight: 700;
+      padding-top: 1.5px;
     }
     .footer {
-      margin-top: 5px;
-      font-size: 8.5px;
+      margin-top: 4px;
+      font-size: 7.5px;
       text-align: center;
     }
   </style>
 </head>
 <body>
-  <div class="center">
-    <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
-    <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
+  <div class="ticket">
+    <div class="center">
+      <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
+      <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
+      <div class="divider"></div>
+      <div class="bold">CUPOM NÃO FISCAL</div>
+      <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
+    </div>
+
     <div class="divider"></div>
-    <div class="bold">CUPOM NÃO FISCAL</div>
-    <div class="subtitle">#${codigoCurto} · ${dataFormatada} ${horaFormatada}</div>
-  </div>
 
-  <div class="divider"></div>
-
-  <div class="row header-cols">
-    <span>ITEM / QTD x UNIT</span>
-    <span>TOTAL</span>
-  </div>
-
-  <div>
-    ${linhasHtml}
-  </div>
-
-  <div class="divider"></div>
-
-  <div class="totals-section">
-    <div class="row totals-row">
-      <span>Subtotal</span>
-      <span>${money(subtotal)}</span>
-    </div>
-    ${customAmount > 0 ? `
-    <div class="row totals-row">
-      <span>Valor Avulso</span>
-      <span>+ ${money(customAmount)}</span>
-    </div>` : ""}
-    ${discount > 0 ? `
-    <div class="row totals-row">
-      <span>Desconto</span>
-      <span>- ${money(discount)}</span>
-    </div>` : ""}
-    <div class="row total-final">
+    <div class="row header-cols">
+      <span>ITEM / QTD x UNIT</span>
       <span>TOTAL</span>
-      <span>${money(total)}</span>
     </div>
-  </div>
 
-  <div class="divider"></div>
+    <div>
+      ${linhasHtml}
+    </div>
 
-  <div class="payment-section">
-    <div class="row totals-row">
-      <span>Pagamento</span>
-      <span class="bold">${escapeHtml(method)}</span>
+    <div class="divider"></div>
+
+    <div class="totals-section">
+      <div class="row totals-row">
+        <span>Subtotal</span>
+        <span>${money(subtotal)}</span>
+      </div>
+      ${customAmount > 0 ? `
+      <div class="row totals-row">
+        <span>Valor Avulso</span>
+        <span>+ ${money(customAmount)}</span>
+      </div>` : ""}
+      ${discount > 0 ? `
+      <div class="row totals-row">
+        <span>Desconto</span>
+        <span>- ${money(discount)}</span>
+      </div>` : ""}
+      <div class="row total-final">
+        <span>TOTAL</span>
+        <span>${money(total)}</span>
+      </div>
     </div>
-    ${method === "Dinheiro" && received !== null ? `
-    <div class="row totals-row">
-      <span>Recebido</span>
-      <span>${money(received)}</span>
+
+    <div class="divider"></div>
+
+    <div class="payment-section">
+      <div class="row totals-row">
+        <span>Pagamento</span>
+        <span class="bold">${escapeHtml(method)}</span>
+      </div>
+      ${method === "Dinheiro" && received !== null ? `
+      <div class="row totals-row">
+        <span>Recebido</span>
+        <span>${money(received)}</span>
+      </div>
+      <div class="row totals-row">
+        <span>Troco</span>
+        <span class="bold">${money(troco)}</span>
+      </div>` : ""}
+      <div class="footer">Obrigado pela preferência!</div>
     </div>
-    <div class="row totals-row">
-      <span>Troco</span>
-      <span class="bold">${money(troco)}</span>
-    </div>` : ""}
-    <div class="footer">Obrigado pela preferência!</div>
   </div>
 </body>
 </html>`;
