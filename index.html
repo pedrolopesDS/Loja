@@ -58,10 +58,12 @@
           <div class="order-items" id="order-items"></div>
           <div class="order-summary">
             <div><span>Sub Total</span><strong id="subtotal"></strong></div>
+            <div><span>Valor Avulso</span><span id="custom-amount"></span></div>
             <div><span>Desconto</span><span id="discount"></span></div>
           </div>
           <div class="order-footer">
             <p class="success-message hidden" id="success">Venda Finalizada!</p>
+            <button class="custom-amount-button" id="custom-amount-btn">Valor Avulso</button>
             <button class="discount-button" id="discount-btn">Ajuste de Pagamento</button>
             <button class="charge-button" id="charge"></button>
           </div>
@@ -69,6 +71,18 @@
     </div>
     <button class="mobile-cart-trigger" id="mobile-trigger"></button>
   </main>
+
+  <div class="modal-overlay hidden" id="custom-amount-modal">
+    <div class="modal">
+      <h3>Adicionar Valor Avulso</h3>
+      <div class="modal-input-wrap"><span>R$</span><input id="custom-amount-input" type="text" inputmode="numeric" placeholder="0,00" /></div>
+      <button class="modal-remove hidden" id="custom-amount-remove">Remover valor avulso</button>
+      <div class="modal-actions">
+        <button class="btn-outline" id="custom-amount-cancel">Cancelar</button>
+        <button class="modal-apply" id="custom-amount-apply">Aplicar</button>
+      </div>
+    </div>
+  </div>
   
   <div class="modal-overlay hidden" id="discount-modal">
     <div class="modal">
