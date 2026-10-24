@@ -5,8 +5,8 @@
 // agora vivem no ficheiro dados.js para poderem ser partilhadas com o produtos.js!
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -26,6 +26,8 @@ const navigation = [
   ["Setting", "settings", "settings.html"]
 ];
 
+const CUSTOM_ITEM_ID = "__custom_amount__";
+
 // ESTADO GLOBAL DA APLICAÇÃO
 const state = {
   category: "Todas", 
@@ -35,6 +37,7 @@ const state = {
   placed: false, 
   mobileCart: false, 
   discount: 0, 
+  customAmount: 0,
   paymentDetail: null,
   cart: {}, 
   cartOrder: [], // Guarda a ordem em que os produtos foram adicionados (mais recente no topo)
@@ -52,14 +55,35 @@ const icon = (name, size = 24, stroke = 1.5) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 
 function getTotals() {
-  // Monta os itens respeitando a ordem de inserção no carrinho (state.cartOrder)
+  // Monta os itens respeitando a ordem de inserção no carrinho (state.cartOrder), incluindo o Valor Avulso
   const items = state.cartOrder
-    .map((id) => products.find((p) => String(p.id) === String(id)))
-    .filter((p) => p && (state.cart[p.id] || 0) > 0);
+    .map((id) => {
+      if (id === CUSTOM_ITEM_ID) {
+        return state.customAmount > 0
+          ? { id: CUSTOM_ITEM_ID, name: "Valor Avulso", price: state.customAmount, isCustom: true }
+          : null;
+      }
+      const prod = products.find((p) => String(p.id) === String(id));
+      return prod && (state.cart[prod.id] || 0) > 0 ? prod : null;
+    })
+    .filter(Boolean);
 
-  const subtotal = items.reduce((s, p) => s + p.price * state.cart[p.id], 0);
-  const discount = Math.min(state.discount, subtotal);
-  return { items, subtotal, discount, total: Math.max(subtotal - discount, 0) };
+  const productsSubtotal = items
+    .filter((p) => !p.isCustom)
+    .reduce((s, p) => s + p.price * state.cart[p.id], 0);
+
+  const customAmount = state.customAmount > 0 ? state.customAmount : 0;
+  const grossTotal = productsSubtotal + customAmount;
+  const discount = Math.min(state.discount, grossTotal);
+
+  return {
+    items,
+    subtotal: productsSubtotal,
+    customAmount,
+    grossTotal,
+    discount,
+    total: Math.max(grossTotal - discount, 0)
+  };
 }
 
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -75,13 +99,195 @@ function formatCurrencyInput(value) {
 }
 
 // ==========================================
+// IMPRESSÃO TÉRMICA AUTOMÁTICA (OIA-8383)
+// ==========================================
+function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount, discount, total, method, received }) {
+  const troco = method === "Dinheiro" && received !== null ? Math.max(received - total, 0) : 0;
+  const dataObj = new Date(dataVenda);
+  const dataFormatada = dataObj.toLocaleDateString("pt-BR");
+  const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const codigoCurto = String(vendaId).slice(-8).toUpperCase();
+
+  const linhasHtml = items.map((p) => {
+    const qtd = p.isCustom ? 1 : state.cart[p.id];
+    const unit = money(p.price);
+    const totalItem = money(p.price * qtd);
+    return `
+      <tr>
+        <td colspan="3" class="item-name">${escapeHtml(p.name)}</td>
+      </tr>
+      <tr class="item-values">
+        <td>${qtd}x ${unit}</td>
+        <td></td>
+        <td class="right">${totalItem}</td>
+      </tr>`;
+  }).join("");
+
+  const cupomHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cupom #${codigoCurto}</title>
+  <style>
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #000;
+      background: #fff;
+      width: 100%;
+      max-width: 72mm;
+      padding: 3mm 2mm 6mm;
+    }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .bold { font-weight: bold; }
+    .title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+    .subtitle { font-size: 11px; }
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 6px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .item-name {
+      padding-top: 4px;
+      font-weight: bold;
+      word-break: break-word;
+    }
+    .item-values td {
+      padding-bottom: 3px;
+      font-size: 11px;
+    }
+    .totals-row td {
+      padding: 2px 0;
+    }
+    .total-final td {
+      padding-top: 4px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .footer {
+      margin-top: 10px;
+      font-size: 11px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
+    <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
+    <div class="divider"></div>
+    <div class="bold">CUPOM NÃO FISCAL</div>
+    <div class="subtitle">Venda #${codigoCurto}</div>
+    <div class="subtitle">${dataFormatada} às ${horaFormatada}</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <table>
+    <thead>
+      <tr class="bold">
+        <td colspan="2">ITEM / QTD x UNIT</td>
+        <td class="right">TOTAL</td>
+      </tr>
+    </thead>
+    <tbody>
+      ${linhasHtml}
+    </tbody>
+  </table>
+
+  <div class="divider"></div>
+
+  <table>
+    <tr class="totals-row">
+      <td>Subtotal</td>
+      <td class="right">${money(subtotal)}</td>
+    </tr>
+    ${customAmount > 0 ? `
+    <tr class="totals-row">
+      <td>Valor Avulso</td>
+      <td class="right">+ ${money(customAmount)}</td>
+    </tr>` : ""}
+    ${discount > 0 ? `
+    <tr class="totals-row">
+      <td>Desconto</td>
+      <td class="right">- ${money(discount)}</td>
+    </tr>` : ""}
+    <tr class="total-final">
+      <td>TOTAL</td>
+      <td class="right">${money(total)}</td>
+    </tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <table>
+    <tr class="totals-row">
+      <td>Pagamento</td>
+      <td class="right bold">${escapeHtml(method)}</td>
+    </tr>
+    ${method === "Dinheiro" && received !== null ? `
+    <tr class="totals-row">
+      <td>Valor Recebido</td>
+      <td class="right">${money(received)}</td>
+    </tr>
+    <tr class="totals-row">
+      <td>Troco</td>
+      <td class="right bold">${money(troco)}</td>
+    </tr>` : ""}
+  </table>
+
+  <div class="divider"></div>
+  <div class="footer">Obrigado pela preferência!</div>
+</body>
+</html>`;
+
+  // Cria ou reutiliza um iframe oculto para disparar a impressão sem sair da tela
+  let printFrame = document.getElementById("thermal-print-frame");
+  if (!printFrame) {
+    printFrame = document.createElement("iframe");
+    printFrame.id = "thermal-print-frame";
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "0";
+    printFrame.style.height = "0";
+    printFrame.style.border = "0";
+    document.body.appendChild(printFrame);
+  }
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  frameDoc.write(cupomHtml);
+  frameDoc.close();
+
+  setTimeout(() => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+  }, 150);
+}
+
+// ==========================================
 // FUNÇÕES DE RENDERIZAÇÃO E SUPABASE
 // ==========================================
 
 // Salvar venda utilizando o Supabase (PostgreSQL RPC)
 async function saveCompletedSale(method, received) {
   if (state.placed) return false;
-  const { items, subtotal, discount, total } = getTotals();
+  const { items, subtotal, customAmount, grossTotal, discount, total } = getTotals();
   if (!items.length || !method) return false;
   
   // Usa o crypto.randomUUID nativo do navegador ou a função do dados.js
@@ -92,7 +298,7 @@ async function saveCompletedSale(method, received) {
   const saleData = {
     id: vendaId,
     data_venda: agora,
-    subtotal: roundMoney(subtotal),
+    subtotal: roundMoney(grossTotal),
     desconto: roundMoney(discount),
     total: roundMoney(total),
     metodo_pagamento: method,
@@ -100,15 +306,18 @@ async function saveCompletedSale(method, received) {
     troco: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
   };
 
-  // 2. Prepara os dados dos Itens da Venda
-  const itemsData = items.map(product => ({
-    id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
-    produto_id: product.id,
-    nome_produto: product.name,
-    quantidade: state.cart[product.id],
-    preco_unitario: product.price,
-    total: roundMoney(product.price * state.cart[product.id])
-  }));
+  // 2. Prepara os dados dos Itens da Venda (incluindo o Valor Avulso se houver)
+  const itemsData = items.map(product => {
+    const qty = product.isCustom ? 1 : state.cart[product.id];
+    return {
+      id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
+      produto_id: product.isCustom ? null : product.id,
+      nome_produto: product.name,
+      quantidade: qty,
+      preco_unitario: roundMoney(product.price),
+      total: roundMoney(product.price * qty)
+    };
+  });
   
   try {
     // Chama a função (RPC) no PostgreSQL que insere a venda e os itens juntos com segurança
@@ -118,6 +327,20 @@ async function saveCompletedSale(method, received) {
     });
 
     if (error) throw error;
+
+    // Dispara a impressão da notinha na OIA-8383 assim que a venda é salva
+    imprimirNotinhaTermica({
+      vendaId,
+      dataVenda: agora,
+      items,
+      subtotal,
+      customAmount,
+      discount,
+      total,
+      method,
+      received
+    });
+
     return true;
   } catch (error) {
     console.error("Erro ao guardar a venda no Supabase:", error);
@@ -217,11 +440,25 @@ async function renderProducts() {
 }
 
 function renderCart() {
-  const { items, subtotal, discount, total } = getTotals();
-  const count = items.reduce((s, p) => s + state.cart[p.id], 0);
+  const { items, subtotal, customAmount, discount, total } = getTotals();
+  const count = items.reduce((s, p) => s + (p.isCustom ? 1 : state.cart[p.id]), 0);
 
-  $("order-items").innerHTML = items.length ? items.map((p) =>
-    `<div class="order-item">
+  $("order-items").innerHTML = items.length ? items.map((p) => {
+    if (p.isCustom) {
+      const customThumb = `<span class="food-emoji food-emoji-small thumb-media" style="color: var(--primary);">${icon("cash", 24)}</span>`;
+      return `<div class="order-item">
+        <div class="order-thumbnail">${customThumb}</div>
+        <div class="order-details"><span class="order-name">${escapeHtml(p.name)}</span><span class="order-unit">${money(p.price)}</span></div>
+        <div class="order-quantity">
+          ${state.editing ? `<button data-dec="${CUSTOM_ITEM_ID}" title="Remover valor avulso">${icon("minus", 12, 2)}</button>` : ""}
+          <span>×1</span>
+          ${state.editing ? `<button data-edit-custom="true" title="Editar valor avulso">${icon("pencil", 12, 2)}</button>` : ""}
+        </div>
+        <span class="order-price">${money(p.price)}</span>
+      </div>`;
+    }
+
+    return `<div class="order-item">
       <div class="order-thumbnail">${productThumb(p, "food-emoji food-emoji-small")}</div>
       <div class="order-details"><span class="order-name">${escapeHtml(p.name)}</span><span class="order-unit">${money(p.price)}</span></div>
       <div class="order-quantity">
@@ -230,10 +467,17 @@ function renderCart() {
         ${state.editing ? `<button data-add="${p.id}" title="Adicionar mais um">${icon("plus", 12, 2)}</button>` : ""}
       </div>
       <span class="order-price">${money(p.price * state.cart[p.id])}</span>
-    </div>`).join("")
+    </div>`;
+  }).join("")
     : `<div class="empty-cart">${icon("bag", 28, 1.2)}<p>O carrinho está vazio</p><span>Escolha algo do menu.</span></div>`;
 
   $("subtotal").textContent = money(subtotal);
+
+  if ($("custom-amount")) {
+    $("custom-amount").textContent = customAmount > 0 ? `+ ${money(customAmount)}` : money(0);
+    $("custom-amount").classList.toggle("discount-applied", customAmount > 0);
+  }
+
   $("discount").textContent = discount > 0 ? `- ${money(discount)}` : money(0);
   $("discount").classList.toggle("discount-applied", discount > 0);
   
@@ -276,7 +520,17 @@ function updateCart(id, amount, fromCartEdit = false) {
     state.cart = {};
     state.cartOrder = [];
     state.discount = 0;
+    state.customAmount = 0;
     state.editing = false;
+  }
+
+  if (id === CUSTOM_ITEM_ID && amount < 0) {
+    state.customAmount = 0;
+    state.cartOrder = state.cartOrder.filter((itemId) => itemId !== CUSTOM_ITEM_ID);
+    state.placed = false;
+    state.paymentDetail = null;
+    renderCart();
+    return;
   }
 
   const newQty = Math.max(0, (state.cart[id] || 0) + amount);
@@ -286,7 +540,6 @@ function updateCart(id, amount, fromCartEdit = false) {
     delete state.cart[id];
     state.cartOrder = state.cartOrder.filter((itemId) => String(itemId) !== String(id));
   } else if (amount > 0) {
-    // Se foi adicionado pelo catálogo/leitor (ou ainda não estava na lista), coloca no topo
     const exists = state.cartOrder.some((itemId) => String(itemId) === String(id));
     if (!fromCartEdit || !exists) {
       state.cartOrder = [id, ...state.cartOrder.filter((itemId) => String(itemId) !== String(id))];
@@ -297,7 +550,6 @@ function updateCart(id, amount, fromCartEdit = false) {
   state.paymentDetail = null;
   renderCart();
 
-  // Rola a lista de itens do carrinho para o topo quando um produto é adicionado fora do modo edição
   if (amount > 0 && !fromCartEdit && $("order-items")) {
     $("order-items").scrollTop = 0;
   }
@@ -308,7 +560,6 @@ document.addEventListener("click", (e) => {
   if (!t) return;
   
   if (t.dataset.cat) { 
-    // Lógica de Toggle: Se clicar na categoria que já está ativa, volta para "Todas"
     state.category = state.category === t.dataset.cat ? "Todas" : t.dataset.cat; 
     renderCategories();
     renderProducts(); 
@@ -317,6 +568,8 @@ document.addEventListener("click", (e) => {
     updateCart(t.dataset.add, 1, isInsideCart);
   } else if (t.dataset.dec) {
     updateCart(t.dataset.dec, -1, true);
+  } else if (t.dataset.editCustom) {
+    abrirModalValorAvulso();
   }
 });
 
@@ -408,7 +661,7 @@ function carregarMiniaturaPDF(produto) {
 async function gerarFaturaPDF() {
   const botao = $("invoice-btn");
   if (botao && botao.disabled) return;
-  const { items, subtotal, discount, total } = getTotals();
+  const { items, grossTotal, discount, total } = getTotals();
   if (!items.length) {
     alert("O carrinho está vazio. Adicione produtos antes de gerar a cotação.");
     return;
@@ -418,7 +671,7 @@ async function gerarFaturaPDF() {
     return;
   }
   
-  const linhas = items.map((p) => ({ ...p, quantidade: state.cart[p.id] }));
+  const linhas = items.map((p) => ({ ...p, quantidade: p.isCustom ? 1 : state.cart[p.id] }));
   if (botao) { botao.disabled = true; botao.setAttribute("aria-busy", "true"); }
   try {
     const miniaturas = await Promise.all(linhas.map(carregarMiniaturaPDF));
@@ -455,7 +708,7 @@ async function gerarFaturaPDF() {
     linhas.forEach((p, index) => {
       doc.setFont("helvetica", "bold"); doc.setFontSize(10);
       const nome = doc.splitTextToSize(String(p.name), larguraNome);
-      const identificacao = p.sku || p.barcode || p.id;
+      const identificacao = p.isCustom ? null : (p.sku || p.barcode || p.id);
       doc.setFont("helvetica", "normal"); doc.setFontSize(8);
       const codigo = identificacao == null ? [] : doc.splitTextToSize(String(identificacao), larguraNome);
       
@@ -495,7 +748,7 @@ async function gerarFaturaPDF() {
     if (y + (discount > 0 ? 39 : 32) > limite) novaPagina();
     y += 11;
     texto("Subtotal", xPreco - 4, y, 10, false, 110, "right");
-    texto(money(subtotal), direita - 3, y, 10, false, 35, "right");
+    texto(money(grossTotal), direita - 3, y, 10, false, 35, "right");
     if (discount > 0) {
       y += 7;
       texto("Desconto", xPreco - 4, y, 10, false, 110, "right");
@@ -533,8 +786,74 @@ $("mobile-trigger").addEventListener("click", () => {
 });
 
 // ==========================================
-// SISTEMA DE DESCONTO E PAGAMENTO
+// SISTEMA DE VALOR AVULSO, DESCONTO E PAGAMENTO
 // ==========================================
+
+const modalValorAvulso = $("custom-amount-modal");
+
+function abrirModalValorAvulso() {
+  const input = $("custom-amount-input");
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.value = state.customAmount ? formatCurrencyInput((state.customAmount * 100).toFixed(0)) : "";
+
+  $("custom-amount-remove").classList.toggle("hidden", !state.customAmount);
+  modalValorAvulso.classList.remove("hidden");
+  input.focus();
+}
+
+$("custom-amount-btn").addEventListener("click", abrirModalValorAvulso);
+
+$("custom-amount-input").addEventListener("input", (e) => {
+  e.target.value = formatCurrencyInput(e.target.value);
+});
+
+$("custom-amount-cancel").addEventListener("click", () => modalValorAvulso.classList.add("hidden"));
+modalValorAvulso.addEventListener("click", (e) => {
+  if (e.target === modalValorAvulso) modalValorAvulso.classList.add("hidden");
+});
+
+$("custom-amount-remove").addEventListener("click", () => {
+  state.customAmount = 0;
+  state.cartOrder = state.cartOrder.filter((id) => id !== CUSTOM_ITEM_ID);
+  modalValorAvulso.classList.add("hidden");
+  renderCart();
+});
+
+function aplicarValorAvulso() {
+  if (state.placed) {
+    state.cart = {};
+    state.cartOrder = [];
+    state.discount = 0;
+    state.customAmount = 0;
+    state.editing = false;
+    state.placed = false;
+    state.paymentDetail = null;
+  }
+
+  const inputVal = $("custom-amount-input").value.replace(/\./g, "").replace(",", ".");
+  const value = parseFloat(inputVal);
+
+  if (isNaN(value) || value <= 0) {
+    state.customAmount = 0;
+    state.cartOrder = state.cartOrder.filter((id) => id !== CUSTOM_ITEM_ID);
+  } else {
+    state.customAmount = roundMoney(value);
+    state.cartOrder = [CUSTOM_ITEM_ID, ...state.cartOrder.filter((id) => id !== CUSTOM_ITEM_ID)];
+  }
+
+  modalValorAvulso.classList.add("hidden");
+  renderCart();
+
+  if (state.customAmount > 0 && $("order-items")) {
+    $("order-items").scrollTop = 0;
+  }
+}
+
+$("custom-amount-apply").addEventListener("click", aplicarValorAvulso);
+$("custom-amount-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") aplicarValorAvulso();
+});
 
 const modalDesconto = $("discount-modal");
 
@@ -566,8 +885,8 @@ $("discount-remove").addEventListener("click", () => {
 function aplicarDesconto() {
   const inputVal = $("discount-input").value.replace(/\./g, "").replace(",", ".");
   const value = parseFloat(inputVal);
-  const { subtotal } = getTotals();
-  state.discount = isNaN(value) || value <= 0 ? 0 : Math.min(value, subtotal);
+  const { grossTotal } = getTotals();
+  state.discount = isNaN(value) || value <= 0 ? 0 : Math.min(value, grossTotal);
   modalDesconto.classList.add("hidden");
   renderCart();
 }
@@ -671,7 +990,7 @@ payBody.addEventListener("click", async (e) => {
       detail = `Dinheiro · Troco ${money(Math.max(received - total, 0))}`;
     }
     
-    // Aguarda a gravação no Supabase
+    // Aguarda a gravação no Supabase (e já aciona a impressão térmica na OIA-8383)
     const vendaSalva = await saveCompletedSale(payStep.method, received);
     if (!vendaSalva) return;
     
@@ -700,7 +1019,11 @@ let barcodeTimer = null;
 document.addEventListener("keydown", (e) => {
   // Ignora apenas se o operador estiver digitando nos campos de valor dos modais abertos
   const activeId = document.activeElement ? document.activeElement.id : "";
-  if (activeId === "discount-input" || activeId === "cash-input") {
+  if (
+    activeId === "discount-input" ||
+    activeId === "cash-input" ||
+    activeId === "custom-amount-input"
+  ) {
     return;
   }
 
