@@ -99,28 +99,28 @@ function formatCurrencyInput(value) {
 }
 
 // ==========================================
-// IMPRESSÃO TÉRMICA AUTOMÁTICA (OIA-8383)
+// IMPRESSÃO TÉRMICA AUTOMÁTICA 58mm (OIA-8383)
 // ==========================================
 function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount, discount, total, method, received }) {
   const troco = method === "Dinheiro" && received !== null ? Math.max(received - total, 0) : 0;
   const dataObj = new Date(dataVenda);
   const dataFormatada = dataObj.toLocaleDateString("pt-BR");
-  const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const codigoCurto = String(vendaId).slice(-8).toUpperCase();
 
+  // Usa blocos <div> com break-inside: avoid para nunca cortar um produto ao meio nem repetir cabeçalho
   const linhasHtml = items.map((p) => {
     const qtd = p.isCustom ? 1 : state.cart[p.id];
     const unit = money(p.price);
     const totalItem = money(p.price * qtd);
     return `
-      <tr>
-        <td colspan="3" class="item-name">${escapeHtml(p.name)}</td>
-      </tr>
-      <tr class="item-values">
-        <td>${qtd}x ${unit}</td>
-        <td></td>
-        <td class="right">${totalItem}</td>
-      </tr>`;
+      <div class="item">
+        <div class="item-name">${escapeHtml(p.name)}</div>
+        <div class="row item-values">
+          <span>${qtd}x ${unit}</span>
+          <span>${totalItem}</span>
+        </div>
+      </div>`;
   }).join("");
 
   const cupomHtml = `<!DOCTYPE html>
@@ -130,7 +130,7 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   <title>Cupom #${codigoCurto}</title>
   <style>
     @page {
-      size: 80mm auto;
+      size: 58mm auto;
       margin: 0;
     }
     * {
@@ -140,47 +140,64 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
     }
     body {
       font-family: "Courier New", Courier, monospace;
-      font-size: 12px;
-      line-height: 1.35;
+      font-size: 9px;
+      line-height: 1.2;
       color: #000;
       background: #fff;
-      width: 100%;
-      max-width: 72mm;
-      padding: 3mm 2mm 6mm;
+      width: 48mm;
+      max-width: 48mm;
+      margin: 0 auto;
+      padding: 1.5mm 1mm 4mm;
     }
     .center { text-align: center; }
-    .right { text-align: right; }
     .bold { font-weight: bold; }
-    .title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
-    .subtitle { font-size: 11px; }
+    .title { font-size: 10px; font-weight: bold; line-height: 1.15; }
+    .subtitle { font-size: 8.5px; }
     .divider {
       border-top: 1px dashed #000;
-      margin: 6px 0;
+      margin: 3px 0;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .header-cols {
+      font-size: 8.5px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .item {
+      margin-bottom: 3px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .item-name {
-      padding-top: 4px;
       font-weight: bold;
-      word-break: break-word;
+      font-size: 9px;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
     }
-    .item-values td {
-      padding-bottom: 3px;
-      font-size: 11px;
+    .item-values {
+      font-size: 8.5px;
     }
-    .totals-row td {
-      padding: 2px 0;
+    .totals-section, .payment-section {
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
-    .total-final td {
-      padding-top: 4px;
-      font-size: 14px;
+    .totals-row {
+      font-size: 9px;
+      padding: 1px 0;
+    }
+    .total-final {
+      font-size: 10.5px;
       font-weight: bold;
+      padding-top: 2px;
     }
     .footer {
-      margin-top: 10px;
-      font-size: 11px;
+      margin-top: 5px;
+      font-size: 8.5px;
       text-align: center;
     }
   </style>
@@ -191,67 +208,61 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
     <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
     <div class="divider"></div>
     <div class="bold">CUPOM NÃO FISCAL</div>
-    <div class="subtitle">Venda #${codigoCurto}</div>
-    <div class="subtitle">${dataFormatada} às ${horaFormatada}</div>
+    <div class="subtitle">#${codigoCurto} · ${dataFormatada} ${horaFormatada}</div>
   </div>
 
   <div class="divider"></div>
 
-  <table>
-    <thead>
-      <tr class="bold">
-        <td colspan="2">ITEM / QTD x UNIT</td>
-        <td class="right">TOTAL</td>
-      </tr>
-    </thead>
-    <tbody>
-      ${linhasHtml}
-    </tbody>
-  </table>
+  <div class="row header-cols">
+    <span>ITEM / QTD x UNIT</span>
+    <span>TOTAL</span>
+  </div>
+
+  <div>
+    ${linhasHtml}
+  </div>
 
   <div class="divider"></div>
 
-  <table>
-    <tr class="totals-row">
-      <td>Subtotal</td>
-      <td class="right">${money(subtotal)}</td>
-    </tr>
+  <div class="totals-section">
+    <div class="row totals-row">
+      <span>Subtotal</span>
+      <span>${money(subtotal)}</span>
+    </div>
     ${customAmount > 0 ? `
-    <tr class="totals-row">
-      <td>Valor Avulso</td>
-      <td class="right">+ ${money(customAmount)}</td>
-    </tr>` : ""}
+    <div class="row totals-row">
+      <span>Valor Avulso</span>
+      <span>+ ${money(customAmount)}</span>
+    </div>` : ""}
     ${discount > 0 ? `
-    <tr class="totals-row">
-      <td>Desconto</td>
-      <td class="right">- ${money(discount)}</td>
-    </tr>` : ""}
-    <tr class="total-final">
-      <td>TOTAL</td>
-      <td class="right">${money(total)}</td>
-    </tr>
-  </table>
+    <div class="row totals-row">
+      <span>Desconto</span>
+      <span>- ${money(discount)}</span>
+    </div>` : ""}
+    <div class="row total-final">
+      <span>TOTAL</span>
+      <span>${money(total)}</span>
+    </div>
+  </div>
 
   <div class="divider"></div>
 
-  <table>
-    <tr class="totals-row">
-      <td>Pagamento</td>
-      <td class="right bold">${escapeHtml(method)}</td>
-    </tr>
+  <div class="payment-section">
+    <div class="row totals-row">
+      <span>Pagamento</span>
+      <span class="bold">${escapeHtml(method)}</span>
+    </div>
     ${method === "Dinheiro" && received !== null ? `
-    <tr class="totals-row">
-      <td>Valor Recebido</td>
-      <td class="right">${money(received)}</td>
-    </tr>
-    <tr class="totals-row">
-      <td>Troco</td>
-      <td class="right bold">${money(troco)}</td>
-    </tr>` : ""}
-  </table>
-
-  <div class="divider"></div>
-  <div class="footer">Obrigado pela preferência!</div>
+    <div class="row totals-row">
+      <span>Recebido</span>
+      <span>${money(received)}</span>
+    </div>
+    <div class="row totals-row">
+      <span>Troco</span>
+      <span class="bold">${money(troco)}</span>
+    </div>` : ""}
+    <div class="footer">Obrigado pela preferência!</div>
+  </div>
 </body>
 </html>`;
 
