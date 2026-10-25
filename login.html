@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDV — Login</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.png" />
+  <style>
+    .login-shell {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: var(--canvas);
+    }
+    .login-card {
+      width: min(380px, 100%);
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 36px 28px 28px;
+      box-shadow: 0 24px 60px var(--shadow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .login-card .brand {
+      height: auto;
+      padding-top: 0;
+      margin-bottom: 18px;
+    }
+    .login-card h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .login-card p.login-sub {
+      margin: 0 0 24px;
+      font-family: Georgia, serif;
+      font-size: 13px;
+      color: var(--muted-foreground);
+      text-align: center;
+    }
+    .login-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .login-submit {
+      margin-top: 6px;
+      height: 46px;
+      font-size: 15px;
+    }
+    .login-catalog-link {
+      margin-top: 20px;
+      font-family: Georgia, serif;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      text-decoration: none;
+    }
+    .login-catalog-link:hover {
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <main class="login-shell">
+    <div class="login-card">
+      <div class="brand"><i></i><i></i><i></i></div>
+      <h1>Acesso Restrito</h1>
+      <p class="login-sub">Entre com suas credenciais para acessar o PDV</p>
+
+      <form class="login-form" id="login-form">
+        <div class="form-field">
+          <label for="login-email">E-mail</label>
+          <div class="modal-input-wrap">
+            <input id="login-email" type="email" placeholder="seu@email.com" required autocomplete="email" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="login-password">Senha</label>
+          <div class="modal-input-wrap">
+            <input id="login-password" type="password" placeholder="••••••••" required autocomplete="current-password" />
+          </div>
+        </div>
+
+        <p class="form-error hidden" id="login-error"></p>
+
+        <button type="submit" class="charge-button login-submit" id="login-btn">Entrar</button>
+      </form>
+
+      <a class="login-catalog-link" href="catalogo.html">Ir para o Catálogo Público →</a>
+    </div>
+  </main>
+
+  <!-- Banco de Dados Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="dados.js"></script>
+  <script>
+    const form = document.getElementById("login-form");
+    const emailInput = document.getElementById("login-email");
+    const passInput = document.getElementById("login-password");
+    const errorEl = document.getElementById("login-error");
+    const btn = document.getElementById("login-btn");
+
+    // Se já estiver logado, redireciona direto para a página que tentou acessar (ou index.html)
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const destino = sessionStorage.getItem("pdv:redirectAfterLogin") || "index.html";
+        sessionStorage.removeItem("pdv:redirectAfterLogin");
+        window.location.replace(destino);
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.classList.add("hidden");
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+
+      try {
+        const { error } = await supabaseClient.auth.signInWithPassword({
+          email: emailInput.value.trim(),
+          password: passInput.value
+        });
+
+        if (error) throw error;
+
+        const destino = sessionStorage.getItem("pdv:redirectAfterLogin") || "index.html";
+        sessionStorage.removeItem("pdv:redirectAfterLogin");
+        window.location.replace(destino);
+      } catch (err) {
+        errorEl.textContent = "E-mail ou senha incorretos.";
+        errorEl.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Entrar";
+      }
+    });
+  </script>
+</body>
+</html>
