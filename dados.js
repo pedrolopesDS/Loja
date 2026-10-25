@@ -9,9 +9,10 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
-// ALERTA SONORO E NOTIFICAÇÃO VISUAL (TOAST)
+// ALERTA SONORO, TOAST E CONTADOR NO MENU LATERAL
 // ==========================================
 let globalAudioCtx = null;
+let ultimoTotalPendentes = 0;
 
 function initGlobalAudio() {
   if (!globalAudioCtx) {
@@ -143,9 +144,73 @@ function garantirEstilosToast() {
       background: var(--muted, #f4f4f5);
       color: var(--foreground, #18181b);
     }
+
+    /* Bolinha vermelha de contador no ícone Messages do menu lateral */
+    .nav-button[href="messages.html"] {
+      position: relative;
+    }
+    .nav-msg-badge {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: #e11d48;
+      color: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(225, 29, 72, 0.45);
+      border: 1.5px solid #ffffff;
+      pointer-events: none;
+    }
+    .nav-button-active .nav-msg-badge {
+      background: #ffffff;
+      color: var(--primary, #ea1d63);
+      border-color: var(--primary, #ea1d63);
+    }
   `;
   document.head.appendChild(style);
 }
+
+// Atualiza a bolinha vermelha com a quantidade de pedidos pendentes no menu lateral
+function atualizarBadgeMenuMessages(quantidade) {
+  ultimoTotalPendentes = Number(quantidade) || 0;
+  garantirEstilosToast();
+
+  const aplicarNoDom = () => {
+    const linksMessages = document.querySelectorAll('#nav a[href="messages.html"], .sidebar a[href="messages.html"]');
+    if (!linksMessages.length) return false;
+
+    linksMessages.forEach((link) => {
+      let badge = link.querySelector(".nav-msg-badge");
+      if (ultimoTotalPendentes > 0) {
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-msg-badge";
+          link.appendChild(badge);
+        }
+        badge.textContent = ultimoTotalPendentes > 99 ? "99+" : String(ultimoTotalPendentes);
+      } else if (badge) {
+        badge.remove();
+      }
+    });
+    return true;
+  };
+
+  // Se o menu lateral ainda estiver sendo renderizado pelo script da página, tenta novamente em 120ms
+  if (!aplicarNoDom()) {
+    setTimeout(aplicarNoDom, 120);
+  }
+}
+
+window.atualizarBadgeMenuMessages = atualizarBadgeMenuMessages;
 
 function mostrarNotificacaoPedido(pedido) {
   garantirEstilosToast();
@@ -213,6 +278,9 @@ function iniciarMonitorGlobalDePedidos() {
 
       if (error || !data) return;
 
+      // Atualiza sempre a bolinha com o total real de pedidos pendentes no banco
+      atualizarBadgeMenuMessages(data.length);
+
       const rawSaved = sessionStorage.getItem(STORAGE_KEY);
       const isFirstCheck = rawSaved === null;
       const knownIds = new Set(rawSaved ? JSON.parse(rawSaved) : []);
@@ -250,9 +318,9 @@ function iniciarMonitorGlobalDePedidos() {
     .channel("global-pedidos-realtime")
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "pedidos" },
+      { event: "*", schema: "public", table: "pedidos" },
       () => {
-        setTimeout(verificarNovosPedidos, 500);
+        setTimeout(verificarNovosPedidos, 400);
       }
     )
     .subscribe();
