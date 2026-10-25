@@ -8,6 +8,43 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Nome alterado para supabaseClient para não chocar com a biblioteca!
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ==========================================
+// CONTROLE DE AUTENTICAÇÃO E ROTAS PROTEGIDAS
+// ==========================================
+(function protegerRotas() {
+  const path = window.location.pathname.toLowerCase();
+  const isPublicPage = path.endsWith("catalogo.html") || path.endsWith("login.html");
+
+  if (!isPublicPage) {
+    // Oculta o conteúdo imediatamente para não piscar a tela antes de validar o login
+    document.documentElement.style.visibility = "hidden";
+
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        const paginaAtual = window.location.pathname.split("/").pop() || "index.html";
+        sessionStorage.setItem("pdv:redirectAfterLogin", paginaAtual);
+        window.location.replace("login.html");
+      } else {
+        document.documentElement.style.visibility = "visible";
+      }
+    }).catch(() => {
+      window.location.replace("login.html");
+    });
+  }
+
+  // Intercepta o clique no botão "Sair" (#logout) em todas as páginas protegidas
+  document.addEventListener("click", async (e) => {
+    const logoutBtn = e.target.closest("#logout");
+    if (!logoutBtn) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    await supabaseClient.auth.signOut();
+    window.location.replace("login.html");
+  }, true);
+})();
+
 function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
