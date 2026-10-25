@@ -845,6 +845,9 @@ async function renderMessages(silencioso = false) {
 
     initialLoadDone = true;
     cachedOrders = orders;
+if (typeof window.atualizarBadgeMenuMessages === "function") {
+  window.atualizarBadgeMenuMessages(orders.length);
+}
 
     renderOrdersView(abertos);
   } catch (error) {
