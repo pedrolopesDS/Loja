@@ -9,7 +9,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
-// ALERTA SONORO GLOBAL DE NOVOS PEDIDOS
+// ALERTA SONORO E NOTIFICAÇÃO VISUAL (TOAST)
 // ==========================================
 let globalAudioCtx = null;
 
@@ -61,6 +61,149 @@ function tocarAlertaNovoPedido() {
   }
 }
 
+function garantirEstilosToast() {
+  if (document.getElementById("pdv-toast-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "pdv-toast-styles";
+  style.textContent = `
+    #pdv-toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .pdv-toast {
+      pointer-events: auto;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface, #ffffff);
+      color: var(--foreground, #18181b);
+      border: 1px solid var(--border, #e4e4e7);
+      border-left: 4px solid var(--primary, #ea1d63);
+      border-radius: 12px;
+      padding: 13px 15px;
+      min-width: 280px;
+      max-width: 360px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
+      transform: translateX(120%);
+      opacity: 0;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+    }
+    .pdv-toast.pdv-toast-visible {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .pdv-toast-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: oklch(0.62 0.235 14 / 0.12);
+      color: var(--primary, #ea1d63);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .pdv-toast-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .pdv-toast-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      line-height: 1.3;
+      margin: 0 0 2px;
+      word-wrap: break-word;
+    }
+    .pdv-toast-sub {
+      font-family: Georgia, serif;
+      font-size: 11.5px;
+      color: var(--muted-foreground, #71717a);
+      margin: 0;
+    }
+    .pdv-toast-close {
+      background: transparent;
+      border: 0;
+      color: var(--muted-foreground, #71717a);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pdv-toast-close:hover {
+      background: var(--muted, #f4f4f5);
+      color: var(--foreground, #18181b);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function mostrarNotificacaoPedido(pedido) {
+  garantirEstilosToast();
+
+  let container = document.getElementById("pdv-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "pdv-toast-container";
+    document.body.appendChild(container);
+  }
+
+  const nomeCliente = (pedido && pedido.nome_cliente ? pedido.nome_cliente : "Cliente").trim();
+  const valorFormatado = pedido && pedido.total != null
+    ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(pedido.total))
+    : "";
+
+  const toast = document.createElement("div");
+  toast.className = "pdv-toast";
+  toast.title = "Clique para abrir os pedidos em Messages";
+  toast.innerHTML = `
+    <div class="pdv-toast-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths.message}</svg>
+    </div>
+    <div class="pdv-toast-body">
+      <p class="pdv-toast-title">Novo pedido de ${escapeHtml(nomeCliente)}</p>
+      <p class="pdv-toast-sub">${valorFormatado ? `${valorFormatado} · ` : ""}Clique para ver</p>
+    </div>
+    <button type="button" class="pdv-toast-close" aria-label="Fechar notificação" title="Fechar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths.x}</svg>
+    </button>
+  `;
+
+  const removerToast = () => {
+    toast.classList.remove("pdv-toast-visible");
+    setTimeout(() => toast.remove(), 300);
+  };
+
+  // Clicar no "X" apenas fecha a notificação; clicar no card leva para messages.html
+  toast.addEventListener("click", (e) => {
+    if (e.target.closest(".pdv-toast-close")) {
+      e.stopPropagation();
+      removerToast();
+      return;
+    }
+    window.location.href = "messages.html";
+  });
+
+  container.appendChild(toast);
+
+  // Anima a entrada na tela
+  requestAnimationFrame(() => {
+    toast.classList.add("pdv-toast-visible");
+  });
+
+  // Fecha sozinho após 7 segundos
+  setTimeout(removerToast, 7000);
+}
+
 function iniciarMonitorGlobalDePedidos() {
   const STORAGE_KEY = "pdv:knownOrderIds";
 
@@ -68,7 +211,8 @@ function iniciarMonitorGlobalDePedidos() {
     try {
       const { data, error } = await supabaseClient
         .from("pedidos")
-        .select("id");
+        .select("id, nome_cliente, total, data_venda")
+        .order("data_venda", { ascending: true });
 
       if (error || !data) return;
 
@@ -76,13 +220,13 @@ function iniciarMonitorGlobalDePedidos() {
       const isFirstCheck = rawSaved === null;
       const knownIds = new Set(rawSaved ? JSON.parse(rawSaved) : []);
 
-      let chegouNovo = false;
-      const currentIds = data.map((p) => String(p.id));
+      const novosPedidos = [];
 
-      currentIds.forEach((id) => {
+      data.forEach((pedido) => {
+        const id = String(pedido.id);
         if (!knownIds.has(id)) {
           if (!isFirstCheck) {
-            chegouNovo = true;
+            novosPedidos.push(pedido);
           }
           knownIds.add(id);
         }
@@ -90,9 +234,11 @@ function iniciarMonitorGlobalDePedidos() {
 
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(knownIds)));
 
-      if (chegouNovo) {
+      if (novosPedidos.length > 0) {
         tocarAlertaNovoPedido();
-        // Se o operador estiver na página messages.html, atualiza a lista na tela automaticamente
+        novosPedidos.forEach((pedido) => mostrarNotificacaoPedido(pedido));
+
+        // Se o operador estiver na página messages.html, atualiza a lista automaticamente
         if (typeof window.renderMessages === "function") {
           window.renderMessages(true);
         }
@@ -145,7 +291,7 @@ function iniciarMonitorGlobalDePedidos() {
         window.location.replace("login.html");
       } else {
         document.documentElement.style.visibility = "visible";
-        // Inicia o monitoramento sonoro assim que confirma que o operador está logado
+        // Inicia o monitoramento sonoro e visual assim que confirma que o operador está logado
         iniciarMonitorGlobalDePedidos();
       }
     }).catch(() => {
