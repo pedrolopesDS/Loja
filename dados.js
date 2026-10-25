@@ -183,7 +183,6 @@ function mostrarNotificacaoPedido(pedido) {
     setTimeout(() => toast.remove(), 300);
   };
 
-  // Clicar no "X" apenas fecha a notificação; clicar no card leva para messages.html
   toast.addEventListener("click", (e) => {
     if (e.target.closest(".pdv-toast-close")) {
       e.stopPropagation();
@@ -195,12 +194,10 @@ function mostrarNotificacaoPedido(pedido) {
 
   container.appendChild(toast);
 
-  // Anima a entrada na tela
   requestAnimationFrame(() => {
     toast.classList.add("pdv-toast-visible");
   });
 
-  // Fecha sozinho após 7 segundos
   setTimeout(removerToast, 7000);
 }
 
@@ -238,7 +235,6 @@ function iniciarMonitorGlobalDePedidos() {
         tocarAlertaNovoPedido();
         novosPedidos.forEach((pedido) => mostrarNotificacaoPedido(pedido));
 
-        // Se o operador estiver na página messages.html, atualiza a lista automaticamente
         if (typeof window.renderMessages === "function") {
           window.renderMessages(true);
         }
@@ -248,10 +244,8 @@ function iniciarMonitorGlobalDePedidos() {
     }
   }
 
-  // 1. Faz a leitura inicial silenciosa para memorizar os pedidos já existentes
   verificarNovosPedidos();
 
-  // 2. Escuta inserções em tempo real via Supabase Realtime em qualquer página
   supabaseClient
     .channel("global-pedidos-realtime")
     .on(
@@ -263,14 +257,12 @@ function iniciarMonitorGlobalDePedidos() {
     )
     .subscribe();
 
-  // 3. Escuta eventos locais (caso o catálogo seja usado noutra aba do mesmo PC)
   window.addEventListener("storage", (e) => {
     if (e.key === "pdv:newOrderTrigger") {
       verificarNovosPedidos();
     }
   });
 
-  // 4. Verificação periódica a cada 6 segundos em todas as páginas internas
   setInterval(verificarNovosPedidos, 6000);
 }
 
@@ -291,7 +283,6 @@ function iniciarMonitorGlobalDePedidos() {
         window.location.replace("login.html");
       } else {
         document.documentElement.style.visibility = "visible";
-        // Inicia o monitoramento sonoro e visual assim que confirma que o operador está logado
         iniciarMonitorGlobalDePedidos();
       }
     }).catch(() => {
@@ -299,7 +290,6 @@ function iniciarMonitorGlobalDePedidos() {
     });
   }
 
-  // Intercepta o clique no botão "Sair" (#logout) em todas as páginas protegidas
   document.addEventListener("click", async (e) => {
     const logoutBtn = e.target.closest("#logout");
     if (!logoutBtn) return;
@@ -314,14 +304,218 @@ function iniciarMonitorGlobalDePedidos() {
 })();
 
 function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 // ==========================================
-// DADOS COMPARTILHADOS (usado por index.html e produtos.html)
+// IMPRESSÃO TÉRMICA 58mm COMPARTILHADA (OIA-8383)
+// ==========================================
+function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount = 0, discount = 0, total, method, received = null, clientName = null }) {
+  const fmtMoney = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
+  const troco = method === "Dinheiro" && received !== null ? Math.max(received - total, 0) : 0;
+  const dataObj = new Date(dataVenda);
+  const dataFormatada = dataObj.toLocaleDateString("pt-BR");
+  const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const codigoCurto = String(vendaId).slice(-8).toUpperCase();
+
+  const linhasHtml = (items || []).map((p) => {
+    const qtd = p.quantity != null
+      ? p.quantity
+      : (p.quantidade != null ? p.quantidade : (p.isCustom ? 1 : (typeof state !== "undefined" && state.cart ? state.cart[p.id] : 1)));
+    const unit = fmtMoney(p.price);
+    const totalItem = fmtMoney(p.price * qtd);
+    return `
+      <div class="item">
+        <div class="item-name">${escapeHtml(p.name)}</div>
+        <div class="row item-values">
+          <span>${qtd}x ${unit}</span>
+          <span>${totalItem}</span>
+        </div>
+      </div>`;
+  }).join("");
+
+  const cupomHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cupom #${codigoCurto}</title>
+  <style>
+    @page {
+      size: 58mm auto;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 58mm;
+      background: #fff;
+      color: #000;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      line-height: 1.2;
+      -webkit-print-color-adjust: exact;
+    }
+    .ticket {
+      width: 100%;
+      padding: 2mm 6.5mm 4mm 6.5mm;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: 700; }
+    .title { font-size: 8.5px; font-weight: 700; line-height: 1.15; }
+    .subtitle { font-size: 7.5px; }
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 2.5px 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px;
+      width: 100%;
+    }
+    .row span:last-child {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .header-cols {
+      font-size: 7.5px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .item {
+      margin-bottom: 2.5px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .item-name {
+      font-weight: 700;
+      font-size: 8px;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    .item-values {
+      font-size: 7.5px;
+    }
+    .totals-section, .payment-section {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .totals-row {
+      font-size: 8px;
+      padding: 0.5px 0;
+    }
+    .total-final {
+      font-size: 9px;
+      font-weight: 700;
+      padding-top: 1.5px;
+    }
+    .footer {
+      margin-top: 4px;
+      font-size: 7.5px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="center">
+      <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
+      <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
+      <div class="divider"></div>
+      <div class="bold">CUPOM NÃO FISCAL</div>
+      <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
+      ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row header-cols">
+      <span>ITEM / QTD x UNIT</span>
+      <span>TOTAL</span>
+    </div>
+
+    <div>
+      ${linhasHtml}
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="totals-section">
+      <div class="row totals-row">
+        <span>Subtotal</span>
+        <span>${fmtMoney(subtotal)}</span>
+      </div>
+      ${customAmount > 0 ? `
+      <div class="row totals-row">
+        <span>Valor Avulso</span>
+        <span>+ ${fmtMoney(customAmount)}</span>
+      </div>` : ""}
+      ${discount > 0 ? `
+      <div class="row totals-row">
+        <span>Desconto</span>
+        <span>- ${fmtMoney(discount)}</span>
+      </div>` : ""}
+      <div class="row total-final">
+        <span>TOTAL</span>
+        <span>${fmtMoney(total)}</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="payment-section">
+      <div class="row totals-row">
+        <span>Pagamento</span>
+        <span class="bold">${escapeHtml(method)}</span>
+      </div>
+      ${method === "Dinheiro" && received !== null ? `
+      <div class="row totals-row">
+        <span>Recebido</span>
+        <span>${fmtMoney(received)}</span>
+      </div>
+      <div class="row totals-row">
+        <span>Troco</span>
+        <span class="bold">${fmtMoney(troco)}</span>
+      </div>` : ""}
+      <div class="footer">Obrigado pela preferência!</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  let printFrame = document.getElementById("thermal-print-frame");
+  if (!printFrame) {
+    printFrame = document.createElement("iframe");
+    printFrame.id = "thermal-print-frame";
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "0";
+    printFrame.style.height = "0";
+    printFrame.style.border = "0";
+    document.body.appendChild(printFrame);
+  }
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  frameDoc.write(cupomHtml);
+  frameDoc.close();
+
+  setTimeout(() => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+  }, 150);
+}
+
+// ==========================================
+// DADOS COMPARTILHADOS (usado por todas as páginas)
 // ==========================================
 const paths = {
   trash: '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
@@ -332,6 +526,7 @@ const paths = {
   message: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12h-6"/><path d="M16 16h-6"/>',
   invoice: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="9" cy="10" r="3"/><path d="M9 6v8"/><path d="M15 15H6"/><path d="M15 19H6"/>',
+  printer: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
