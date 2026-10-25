@@ -1,7 +1,7 @@
 // ==========================================
 // PÁGINA DE PEDIDOS DO CATÁLOGO (MESSAGES + SUPABASE)
 // ==========================================
-// Nota: A configuração do banco (supabaseClient) vive no dados.js
+// Nota: A configuração do banco (supabaseClient) e o alerta sonoro global vivem no dados.js
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -11,65 +11,10 @@ const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 let cachedOrders = [];
 let productsMap = {};
-let knownOrderIds = new Set();
 let initialLoadDone = false;
-let audioCtx = null;
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-// ==========================================
-// ALERTA SONORO DE NOVO PEDIDO (WEB AUDIO API)
-// ==========================================
-function initAudioContext() {
-  if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (AudioContextClass) {
-      audioCtx = new AudioContextClass();
-    }
-  }
-  if (audioCtx && audioCtx.state === "suspended") {
-    audioCtx.resume();
-  }
-}
-
-// Desbloqueia o áudio no navegador ao primeiro clique ou tecla na página
-document.addEventListener("click", initAudioContext, { once: true });
-document.addEventListener("keydown", initAudioContext, { once: true });
-
-function tocarAlertaNovoPedido() {
-  try {
-    initAudioContext();
-    if (!audioCtx) return;
-
-    const agora = audioCtx.currentTime;
-
-    // Função auxiliar para criar cada nota da campainha ("Ding-Dong" agudo de PDV)
-    const tocarNota = (frequencia, inicio, duracao) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(frequencia, inicio);
-
-      gain.gain.setValueAtTime(0.001, inicio);
-      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, inicio + duracao);
-
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.start(inicio);
-      osc.stop(inicio + duracao);
-    };
-
-    // Toque duplo de alerta de pedido
-    tocarNota(880, agora, 0.18);        // Nota Lá (A5)
-    tocarNota(1174.66, agora + 0.16, 0.45); // Nota Ré (D6)
-  } catch (err) {
-    console.warn("Áudio bloqueado pelo navegador até que haja interação na página:", err);
-  }
 }
 
 function renderNav() {
@@ -302,7 +247,6 @@ async function deleteOrder(orderId, buttonEl) {
 
     if (error) throw error;
 
-    knownOrderIds.delete(orderId);
     await renderMessages(true);
   } catch (error) {
     console.error("Erro ao excluir o pedido do Supabase:", error);
@@ -319,8 +263,8 @@ async function deleteOrder(orderId, buttonEl) {
 // ==========================================
 async function renderMessages(silencioso = false) {
   const panel = $("messages-container");
+  if (!panel) return;
 
-  // Guarda os IDs dos pedidos que o operador está com o card aberto para não fechá-los ao atualizar
   const abertos = new Set(
     Array.from(panel.querySelectorAll("details.bill-record[open]"))
       .map((el) => el.dataset.orderId)
@@ -362,21 +306,6 @@ async function renderMessages(silencioso = false) {
         total: parseFloat(item.total)
       }))
     }));
-
-    // Verifica se chegou algum pedido novo após o carregamento inicial da página
-    let chegouNovoPedido = false;
-    orders.forEach((o) => {
-      if (!knownOrderIds.has(o.id)) {
-        if (initialLoadDone) {
-          chegouNovoPedido = true;
-        }
-        knownOrderIds.add(o.id);
-      }
-    });
-
-    if (chegouNovoPedido) {
-      tocarAlertaNovoPedido();
-    }
 
     initialLoadDone = true;
     cachedOrders = orders;
@@ -431,7 +360,9 @@ async function renderMessages(silencioso = false) {
   }
 }
 
-// Delegação de eventos para os botões de Fatura/Recibo e Excluir pedido
+// Expõe a função globalmente para que o dados.js atualize a lista ao tocar o som
+window.renderMessages = renderMessages;
+
 $("messages-container").addEventListener("click", (e) => {
   const invoiceBtn = e.target.closest("[data-invoice-order]");
   if (invoiceBtn) {
@@ -445,33 +376,7 @@ $("messages-container").addEventListener("click", (e) => {
   }
 });
 
-// 1. Escuta em tempo real pelo Supabase Realtime (instantâneo entre dispositivos)
-supabaseClient
-  .channel("pedidos-realtime")
-  .on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: "pedidos" },
-    () => {
-      // Aguarda 600ms para garantir que os itens_pedido também já terminaram de ser inseridos
-      setTimeout(() => renderMessages(true), 600);
-    }
-  )
-  .subscribe();
-
-// 2. Escuta eventos na mesma máquina (caso catálogo seja testado noutra aba)
-window.addEventListener("storage", (e) => {
-  if (e.key === "pdv:newOrderTrigger") {
-    renderMessages(true);
-  }
-});
-
-// 3. Verificação periódica de segurança a cada 6 segundos (caso o Realtime oscile)
-setInterval(() => {
-  renderMessages(true);
-}, 6000);
-
 $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
-$("logout").addEventListener("click", () => window.location.href = "index.html");
 
 renderNav();
 renderMessages();
