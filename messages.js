@@ -1,7 +1,7 @@
 // ==========================================
 // PÁGINA DE PEDIDOS DO CATÁLOGO (MESSAGES + SUPABASE)
 // ==========================================
-// Nota: A configuração do banco (supabaseClient) e o alerta sonoro global vivem no dados.js
+// Nota: A configuração do banco (supabaseClient), impressão térmica e alerta sonoro vivem no dados.js
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -32,6 +32,30 @@ function renderNav() {
       ${icon(ic)}<span>${name}</span>
     </a>`
   ).join("");
+}
+
+// ==========================================
+// IMPRIMIR NOTINHA TÉRMICA 58mm DO PEDIDO
+// ==========================================
+function imprimirPedidoTermico(orderId) {
+  const order = cachedOrders.find((o) => String(o.id) === String(orderId));
+  if (!order || !order.items.length) {
+    alert("Não foram encontrados itens para imprimir este pedido.");
+    return;
+  }
+
+  imprimirNotinhaTermica({
+    vendaId: order.id,
+    dataVenda: order.date,
+    items: order.items,
+    subtotal: order.subtotal,
+    customAmount: 0,
+    discount: order.discount,
+    total: order.total,
+    method: order.payment,
+    received: order.received,
+    clientName: order.clientName
+  });
 }
 
 // ==========================================
@@ -342,7 +366,10 @@ async function renderMessages(silencioso = false) {
               ${order.payment === "Dinheiro" && order.received !== null ? `<div><span>Valor informado</span><strong>${money(order.received)}</strong></div><div><span>Troco</span><strong>${money(order.change)}</strong></div>` : ""}
             </div>
             <div class="bill-actions">
-              <button type="button" class="icon-btn edit-button" data-invoice-order="${escapeHtml(order.id)}" title="Fatura / Recibo">
+              <button type="button" class="icon-btn edit-button" data-print-order="${escapeHtml(order.id)}" title="Imprimir Notinha Térmica (58mm)">
+                ${icon("printer", 17)}
+              </button>
+              <button type="button" class="icon-btn edit-button" data-invoice-order="${escapeHtml(order.id)}" title="Fatura / Recibo (PDF)">
                 ${icon("invoice", 17)}
               </button>
               <button type="button" class="bill-delete-btn" data-delete-order="${escapeHtml(order.id)}" title="Excluir este pedido">
@@ -360,10 +387,16 @@ async function renderMessages(silencioso = false) {
   }
 }
 
-// Expõe a função globalmente para que o dados.js atualize a lista ao tocar o som
 window.renderMessages = renderMessages;
 
+// Delegação de eventos para Imprimir Notinha, Fatura PDF e Excluir pedido
 $("messages-container").addEventListener("click", (e) => {
+  const printBtn = e.target.closest("[data-print-order]");
+  if (printBtn) {
+    imprimirPedidoTermico(printBtn.dataset.printOrder);
+    return;
+  }
+
   const invoiceBtn = e.target.closest("[data-invoice-order]");
   if (invoiceBtn) {
     gerarFaturaPedidoPDF(invoiceBtn.dataset.invoiceOrder, invoiceBtn);
