@@ -1,7 +1,7 @@
 // ==========================================
 // PÁGINA DE HISTÓRICO DE VENDAS (SUPABASE)
 // ==========================================
-// Nota: A configuração do banco (supabaseClient) agora vive no dados.js
+// Nota: A configuração do banco (supabaseClient) e a impressão térmica vivem no dados.js
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -31,6 +31,29 @@ function renderNav() {
       ${icon(ic)}<span>${name}</span>
     </a>`
   ).join("");
+}
+
+// ==========================================
+// IMPRIMIR NOTINHA TÉRMICA 58mm DA VENDA
+// ==========================================
+function reimprimirVendaTermica(saleId) {
+  const sale = cachedSales.find((s) => String(s.id) === String(saleId));
+  if (!sale || !sale.items.length) {
+    alert("Não foram encontrados itens para imprimir esta venda.");
+    return;
+  }
+
+  imprimirNotinhaTermica({
+    vendaId: sale.id,
+    dataVenda: sale.date,
+    items: sale.items,
+    subtotal: sale.subtotal,
+    customAmount: 0,
+    discount: sale.discount,
+    total: sale.total,
+    method: sale.payment,
+    received: sale.received
+  });
 }
 
 // ==========================================
@@ -258,7 +281,6 @@ async function renderBills() {
   panel.innerHTML = '<p class="bills-empty">A carregar vendas...</p>';
   
   try {
-    // Busca vendas e catálogo de produtos em paralelo para ter fotos e códigos de barras no PDF
     const [vendasRes, produtosRes] = await Promise.all([
       supabaseClient.from("vendas").select("*, itens_venda(*)").order("data_venda", { ascending: false }),
       supabaseClient.from("produtos").select("id, codigo_barras, foto_url")
@@ -315,7 +337,10 @@ async function renderBills() {
             </table></div>
             <div class="bill-totals"><div><span>Subtotal</span><strong>${money(sale.subtotal)}</strong></div><div><span>Desconto</span><strong>${money(sale.discount)}</strong></div><div><span>Total pago</span><strong>${money(sale.total)}</strong></div>${sale.payment === "Dinheiro" ? `<div><span>Valor recebido</span><strong>${money(sale.received)}</strong></div><div><span>Troco</span><strong>${money(sale.change)}</strong></div>` : ""}</div>
             <div class="bill-actions">
-              <button type="button" class="icon-btn edit-button" data-invoice-sale="${escapeHtml(sale.id)}" title="Fatura / Recibo">
+              <button type="button" class="icon-btn edit-button" data-print-sale="${escapeHtml(sale.id)}" title="Imprimir Notinha Térmica (58mm)">
+                ${icon("printer", 17)}
+              </button>
+              <button type="button" class="icon-btn edit-button" data-invoice-sale="${escapeHtml(sale.id)}" title="Fatura / Recibo (PDF)">
                 ${icon("invoice", 17)}
               </button>
               <button type="button" class="bill-delete-btn" data-delete-sale="${escapeHtml(sale.id)}" title="Excluir esta venda">
@@ -331,8 +356,14 @@ async function renderBills() {
   }
 }
 
-// Delegação de eventos para os botões de Fatura/Recibo e Excluir venda
+// Delegação de eventos para Imprimir Notinha, Fatura PDF e Excluir venda
 $("bills-container").addEventListener("click", (e) => {
+  const printBtn = e.target.closest("[data-print-sale]");
+  if (printBtn) {
+    reimprimirVendaTermica(printBtn.dataset.printSale);
+    return;
+  }
+
   const invoiceBtn = e.target.closest("[data-invoice-sale]");
   if (invoiceBtn) {
     gerarFaturaVendaPDF(invoiceBtn.dataset.invoiceSale, invoiceBtn);
@@ -346,7 +377,6 @@ $("bills-container").addEventListener("click", (e) => {
 });
 
 $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
-$("logout").addEventListener("click", () => window.location.href = "index.html");
 
 renderNav();
 renderBills();
