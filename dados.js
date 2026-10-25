@@ -9,6 +9,126 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
+// ALERTA SONORO GLOBAL DE NOVOS PEDIDOS
+// ==========================================
+let globalAudioCtx = null;
+
+function initGlobalAudio() {
+  if (!globalAudioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      globalAudioCtx = new AudioContextClass();
+    }
+  }
+  if (globalAudioCtx && globalAudioCtx.state === "suspended") {
+    globalAudioCtx.resume();
+  }
+}
+
+document.addEventListener("click", initGlobalAudio, { once: true });
+document.addEventListener("keydown", initGlobalAudio, { once: true });
+
+function tocarAlertaNovoPedido() {
+  try {
+    initGlobalAudio();
+    if (!globalAudioCtx) return;
+
+    const agora = globalAudioCtx.currentTime;
+
+    const tocarNota = (frequencia, inicio, duracao) => {
+      const osc = globalAudioCtx.createOscillator();
+      const gain = globalAudioCtx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequencia, inicio);
+
+      gain.gain.setValueAtTime(0.001, inicio);
+      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, inicio + duracao);
+
+      osc.connect(gain);
+      gain.connect(globalAudioCtx.destination);
+
+      osc.start(inicio);
+      osc.stop(inicio + duracao);
+    };
+
+    // Toque duplo de alerta ("Ding-Dong")
+    tocarNota(880, agora, 0.18);           // Lá (A5)
+    tocarNota(1174.66, agora + 0.16, 0.45); // Ré (D6)
+  } catch (err) {
+    console.warn("Áudio aguardando interação na página:", err);
+  }
+}
+
+function iniciarMonitorGlobalDePedidos() {
+  const STORAGE_KEY = "pdv:knownOrderIds";
+
+  async function verificarNovosPedidos() {
+    try {
+      const { data, error } = await supabaseClient
+        .from("pedidos")
+        .select("id");
+
+      if (error || !data) return;
+
+      const rawSaved = sessionStorage.getItem(STORAGE_KEY);
+      const isFirstCheck = rawSaved === null;
+      const knownIds = new Set(rawSaved ? JSON.parse(rawSaved) : []);
+
+      let chegouNovo = false;
+      const currentIds = data.map((p) => String(p.id));
+
+      currentIds.forEach((id) => {
+        if (!knownIds.has(id)) {
+          if (!isFirstCheck) {
+            chegouNovo = true;
+          }
+          knownIds.add(id);
+        }
+      });
+
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(knownIds)));
+
+      if (chegouNovo) {
+        tocarAlertaNovoPedido();
+        // Se o operador estiver na página messages.html, atualiza a lista na tela automaticamente
+        if (typeof window.renderMessages === "function") {
+          window.renderMessages(true);
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao verificar novos pedidos:", e);
+    }
+  }
+
+  // 1. Faz a leitura inicial silenciosa para memorizar os pedidos já existentes
+  verificarNovosPedidos();
+
+  // 2. Escuta inserções em tempo real via Supabase Realtime em qualquer página
+  supabaseClient
+    .channel("global-pedidos-realtime")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "pedidos" },
+      () => {
+        setTimeout(verificarNovosPedidos, 500);
+      }
+    )
+    .subscribe();
+
+  // 3. Escuta eventos locais (caso o catálogo seja usado noutra aba do mesmo PC)
+  window.addEventListener("storage", (e) => {
+    if (e.key === "pdv:newOrderTrigger") {
+      verificarNovosPedidos();
+    }
+  });
+
+  // 4. Verificação periódica a cada 6 segundos em todas as páginas internas
+  setInterval(verificarNovosPedidos, 6000);
+}
+
+// ==========================================
 // CONTROLE DE AUTENTICAÇÃO E ROTAS PROTEGIDAS
 // ==========================================
 (function protegerRotas() {
@@ -16,7 +136,6 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const isPublicPage = path.endsWith("catalogo.html") || path.endsWith("login.html");
 
   if (!isPublicPage) {
-    // Oculta o conteúdo imediatamente para não piscar a tela antes de validar o login
     document.documentElement.style.visibility = "hidden";
 
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -26,6 +145,8 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         window.location.replace("login.html");
       } else {
         document.documentElement.style.visibility = "visible";
+        // Inicia o monitoramento sonoro assim que confirma que o operador está logado
+        iniciarMonitorGlobalDePedidos();
       }
     }).catch(() => {
       window.location.replace("login.html");
@@ -40,6 +161,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     e.preventDefault();
     e.stopImmediatePropagation();
 
+    sessionStorage.removeItem("pdv:knownOrderIds");
     await supabaseClient.auth.signOut();
     window.location.replace("login.html");
   }, true);
