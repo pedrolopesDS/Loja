@@ -12,6 +12,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // CARREGAMENTO DE PRODUTOS COM CACHE E ANTI-TRAVAMENTO
 // ==========================================
 const PRODUCTS_CACHE_KEY = "pdv:produtosCacheV1";
+let ultimoCallbackUIProdutos = null;
 
 function mapearProdutosBanco(data) {
   return (data || []).map((p) => ({
@@ -52,17 +53,20 @@ async function buscarProdutosNoSupabaseComFallback() {
     console.warn("Cliente Supabase demorou ou falhou, acionando busca direta REST:", err.message);
   }
 
-  // 2ª Tentativa (Fallback): Busca direta via REST API (imune a travamentos de sessão/locks do navegador)
+  // 2ª Tentativa (Fallback): Busca direta na API com cache: "no-store" (nunca usa dados velhos do navegador)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
 
   try {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/produtos?select=*`, {
       method: "GET",
+      cache: "no-store",
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache"
       },
       signal: controller.signal
     });
@@ -76,25 +80,28 @@ async function buscarProdutosNoSupabaseComFallback() {
 }
 
 async function carregarProdutosComSeguranca(onUpdateUI) {
-  // 1. Se já existir cache no navegador, carrega na memória e exibe na tela imediatamente (0ms)
-  const cache = obterProdutosDoCacheLocal();
-  if (cache) {
-    products = cache;
-    if (typeof onUpdateUI === "function") onUpdateUI();
+  if (typeof onUpdateUI === "function") {
+    ultimoCallbackUIProdutos = onUpdateUI;
   }
 
-  // 2. Busca a versão mais recente no Supabase em segundo plano
+  // 1. Exibe o cache na hora (0ms) apenas para a tela não ficar vazia
+  const cache = obterProdutosDoCacheLocal();
+  if (cache && (!products || products.length === 0)) {
+    products = cache;
+    if (ultimoCallbackUIProdutos) ultimoCallbackUIProdutos();
+  }
+
+  // 2. Vai SEMPRE ao banco buscar os dados frescos e sobrescreve o cache
   try {
     const listaAtualizada = await buscarProdutosNoSupabaseComFallback();
     products = listaAtualizada;
     try {
       localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(listaAtualizada));
     } catch (_) {}
-    if (typeof onUpdateUI === "function") onUpdateUI();
+    if (ultimoCallbackUIProdutos) ultimoCallbackUIProdutos();
     return true;
   } catch (error) {
     console.error("Erro ao sincronizar produtos:", error);
-    // Se não tinha nem cache e a internet falhou, avisa a tela
     if (!cache || cache.length === 0) {
       throw error;
     }
@@ -102,8 +109,21 @@ async function carregarProdutosComSeguranca(onUpdateUI) {
   }
 }
 
-window.carregarProdutosComSeguranca = carregarProdutosComSeguranca;
+// 3. Escuta alterações na tabela "produtos" em tempo real (atualiza todas as telas abertas sem precisar dar F5)
+supabaseClient
+  .channel("global-produtos-realtime")
+  .on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "produtos" },
+    () => {
+      if (ultimoCallbackUIProdutos) {
+        carregarProdutosComSeguranca(ultimoCallbackUIProdutos);
+      }
+    }
+  )
+  .subscribe();
 
+window.carregarProdutosComSeguranca = carregarProdutosComSeguranca;
 // ==========================================
 // ALERTA SONORO, TOAST E CONTADOR NO MENU LATERAL
 // ==========================================
