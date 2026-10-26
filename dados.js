@@ -9,6 +9,102 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
+// CARREGAMENTO DE PRODUTOS COM CACHE E ANTI-TRAVAMENTO
+// ==========================================
+const PRODUCTS_CACHE_KEY = "pdv:produtosCacheV1";
+
+function mapearProdutosBanco(data) {
+  return (data || []).map((p) => ({
+    id: p.id,
+    name: p.nome,
+    price: parseFloat(p.preco),
+    category: p.categoria,
+    barcode: p.codigo_barras,
+    photo: p.foto_url,
+    badge: p.badge
+  }));
+}
+
+function obterProdutosDoCacheLocal() {
+  try {
+    const salvo = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    if (!salvo) return null;
+    const parsed = JSON.parse(salvo);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function buscarProdutosNoSupabaseComFallback() {
+  // 1ª Tentativa: Cliente Supabase com timeout de 4 segundos
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout Supabase Client")), 4000)
+    );
+
+    const queryPromise = supabaseClient.from("produtos").select("*");
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+
+    if (error) throw error;
+    if (Array.isArray(data)) return mapearProdutosBanco(data);
+  } catch (err) {
+    console.warn("Cliente Supabase demorou ou falhou, acionando busca direta REST:", err.message);
+  }
+
+  // 2ª Tentativa (Fallback): Busca direta via REST API (imune a travamentos de sessão/locks do navegador)
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/produtos?select=*`, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return mapearProdutosBanco(data);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function carregarProdutosComSeguranca(onUpdateUI) {
+  // 1. Se já existir cache no navegador, carrega na memória e exibe na tela imediatamente (0ms)
+  const cache = obterProdutosDoCacheLocal();
+  if (cache) {
+    products = cache;
+    if (typeof onUpdateUI === "function") onUpdateUI();
+  }
+
+  // 2. Busca a versão mais recente no Supabase em segundo plano
+  try {
+    const listaAtualizada = await buscarProdutosNoSupabaseComFallback();
+    products = listaAtualizada;
+    try {
+      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(listaAtualizada));
+    } catch (_) {}
+    if (typeof onUpdateUI === "function") onUpdateUI();
+    return true;
+  } catch (error) {
+    console.error("Erro ao sincronizar produtos:", error);
+    // Se não tinha nem cache e a internet falhou, avisa a tela
+    if (!cache || cache.length === 0) {
+      throw error;
+    }
+    return false;
+  }
+}
+
+window.carregarProdutosComSeguranca = carregarProdutosComSeguranca;
+
+// ==========================================
 // ALERTA SONORO, TOAST E CONTADOR NO MENU LATERAL
 // ==========================================
 let globalAudioCtx = null;
@@ -147,33 +243,39 @@ function garantirEstilosToast() {
 
     /* Bolinha vermelha de contador no ícone Messages do menu lateral */
     .nav-button[href="messages.html"] {
-      position: relative;
+      position: relative !important;
     }
-    .nav-msg-badge {
-      position: absolute;
-      top: 8px;
-      right: 12px;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      border-radius: 999px;
-      background: #e11d48;
-      color: #ffffff;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 10.5px;
-      font-weight: 700;
-      line-height: 1;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 6px rgba(225, 29, 72, 0.45);
-      border: 1.5px solid #ffffff;
-      pointer-events: none;
+    b.nav-msg-badge {
+      position: absolute !important;
+      top: 6px !important;
+      right: 8px !important;
+      left: auto !important;
+      width: 18px !important;
+      min-width: 18px !important;
+      max-width: 26px !important;
+      height: 18px !important;
+      padding: 0 4px !important;
+      margin: 0 !important;
+      border-radius: 999px !important;
+      background: #e11d48 !important;
+      color: #ffffff !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      line-height: 1 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-shadow: 0 2px 5px rgba(225, 29, 72, 0.4) !important;
+      border: 1.5px solid #ffffff !important;
+      pointer-events: none !important;
+      box-sizing: border-box !important;
+      z-index: 5 !important;
     }
-    .nav-button-active .nav-msg-badge {
-      background: #ffffff;
-      color: var(--primary, #ea1d63);
-      border-color: var(--primary, #ea1d63);
+    .nav-button-active b.nav-msg-badge {
+      background: #ffffff !important;
+      color: var(--primary, #ea1d63) !important;
+      border-color: var(--primary, #ea1d63) !important;
     }
   `;
   document.head.appendChild(style);
@@ -189,14 +291,19 @@ function atualizarBadgeMenuMessages(quantidade) {
     if (!linksMessages.length) return false;
 
     linksMessages.forEach((link) => {
-      let badge = link.querySelector(".nav-msg-badge");
+      const oldSpan = link.querySelector("span.nav-msg-badge");
+      if (oldSpan) oldSpan.remove();
+
+      let badge = link.querySelector("b.nav-msg-badge");
       if (ultimoTotalPendentes > 0) {
         if (!badge) {
-          badge = document.createElement("span");
+          badge = document.createElement("b");
           badge.className = "nav-msg-badge";
           link.appendChild(badge);
         }
-        badge.textContent = ultimoTotalPendentes > 99 ? "99+" : String(ultimoTotalPendentes);
+        const texto = ultimoTotalPendentes > 99 ? "99+" : String(ultimoTotalPendentes);
+        badge.textContent = texto;
+        badge.style.width = texto.length > 1 ? "auto" : "18px";
       } else if (badge) {
         badge.remove();
       }
@@ -204,7 +311,6 @@ function atualizarBadgeMenuMessages(quantidade) {
     return true;
   };
 
-  // Se o menu lateral ainda estiver sendo renderizado pelo script da página, tenta novamente em 120ms
   if (!aplicarNoDom()) {
     setTimeout(aplicarNoDom, 120);
   }
@@ -278,7 +384,6 @@ function iniciarMonitorGlobalDePedidos() {
 
       if (error || !data) return;
 
-      // Atualiza sempre a bolinha com o total real de pedidos pendentes no banco
       atualizarBadgeMenuMessages(data.length);
 
       const rawSaved = sessionStorage.getItem(STORAGE_KEY);
@@ -494,9 +599,10 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
 <body>
   <div class="ticket">
     <div class="center">
-      <div class="title">Esquina dos Doces</div>
+      <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
       <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
       <div class="divider"></div>
+      <div class="bold">CUPOM NÃO FISCAL</div>
       <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
       ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
     </div>
@@ -643,6 +749,6 @@ function escapeHtml(s) {
 
 function productThumb(p, className) {
   const fallbackIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted-foreground);">${paths.box}</svg>`;
-  const inner = p.photo ? `<img src="${p.photo}" alt="${escapeHtml(p.name)}">` : fallbackIcon;
+  const inner = p.photo ? `<img src="${p.photo}" alt="${escapeHtml(p.name)}" loading="lazy">` : fallbackIcon;
   return `<span class="${className} thumb-media">${inner}</span>`;
 }
