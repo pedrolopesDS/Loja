@@ -494,10 +494,9 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
 <body>
   <div class="ticket">
     <div class="center">
-      <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
+      <div class="title">Esquina dos Doces</div>
       <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
       <div class="divider"></div>
-      <div class="bold">CUPOM NÃO FISCAL</div>
       <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
       ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
     </div>
