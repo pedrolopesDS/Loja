@@ -1,12 +1,10 @@
 // ==========================================
 // FRENTE DE CAIXA (INTEGRADA AO SUPABASE)
 // ==========================================
-// Nota: A configuração do banco (supabaseClient) e a função generateUUID() 
-// agora vivem no ficheiro dados.js para poderem ser partilhadas com o produtos.js!
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -16,7 +14,6 @@ const catEmojis = {
   Pote: "🫙"
 };
 
-// Menu atualizado com links para páginas reais
 const navigation = [
   ["Home", "bag", "index.html"], 
   ["Produtos", "box", "produtos.html"], 
@@ -28,7 +25,6 @@ const navigation = [
 
 const CUSTOM_ITEM_ID = "__custom_amount__";
 
-// ESTADO GLOBAL DA APLICAÇÃO
 const state = {
   category: "Todas", 
   query: "", 
@@ -40,12 +36,9 @@ const state = {
   customAmount: 0,
   paymentDetail: null,
   cart: {}, 
-  cartOrder: [], // Guarda a ordem em que os produtos foram adicionados (mais recente no topo)
+  cartOrder: [],
 };
 
-// ==========================================
-// UTILITÁRIOS
-// ==========================================
 const $ = (id) => document.getElementById(id);
 
 const moneyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -55,7 +48,6 @@ const icon = (name, size = 24, stroke = 1.5) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 
 function getTotals() {
-  // Monta os itens respeitando a ordem de inserção no carrinho (state.cartOrder), incluindo o Valor Avulso
   const items = state.cartOrder
     .map((id) => {
       if (id === CUSTOM_ITEM_ID) {
@@ -88,7 +80,6 @@ function getTotals() {
 
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-// Máscara de dinheiro em tempo real
 function formatCurrencyInput(value) {
   let v = String(value).replace(/\D/g, ""); 
   if (!v) return "";
@@ -99,221 +90,17 @@ function formatCurrencyInput(value) {
 }
 
 // ==========================================
-// IMPRESSÃO TÉRMICA AUTOMÁTICA 58mm (OIA-8383)
-// ==========================================
-function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount, discount, total, method, received }) {
-  const troco = method === "Dinheiro" && received !== null ? Math.max(received - total, 0) : 0;
-  const dataObj = new Date(dataVenda);
-  const dataFormatada = dataObj.toLocaleDateString("pt-BR");
-  const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const codigoCurto = String(vendaId).slice(-8).toUpperCase();
-
-  const linhasHtml = items.map((p) => {
-    const qtd = p.isCustom ? 1 : state.cart[p.id];
-    const unit = money(p.price);
-    const totalItem = money(p.price * qtd);
-    return `
-      <div class="item">
-        <div class="item-name">${escapeHtml(p.name)}</div>
-        <div class="row item-values">
-          <span>${qtd}x ${unit}</span>
-          <span>${totalItem}</span>
-        </div>
-      </div>`;
-  }).join("");
-
-  const cupomHtml = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <title>Cupom #${codigoCurto}</title>
-  <style>
-    @page {
-      size: 58mm auto;
-      margin: 0;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    html, body {
-      width: 58mm;
-      background: #fff;
-      color: #000;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 8px;
-      line-height: 1.2;
-      -webkit-print-color-adjust: exact;
-    }
-    /* 6.5mm de recuo lateral mantém tudo dentro dos 45mm centrais da cabeça térmica */
-    .ticket {
-      width: 100%;
-      padding: 2mm 6.5mm 4mm 6.5mm;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: 700; }
-    .title { font-size: 8.5px; font-weight: 700; line-height: 1.15; }
-    .subtitle { font-size: 7.5px; }
-    .divider {
-      border-top: 1px dashed #000;
-      margin: 2.5px 0;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 4px;
-      width: 100%;
-    }
-    .row span:last-child {
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .header-cols {
-      font-size: 7.5px;
-      font-weight: 700;
-      margin-bottom: 2px;
-    }
-    .item {
-      margin-bottom: 2.5px;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .item-name {
-      font-weight: 700;
-      font-size: 8px;
-      word-wrap: break-word;
-      overflow-wrap: anywhere;
-    }
-    .item-values {
-      font-size: 7.5px;
-    }
-    .totals-section, .payment-section {
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .totals-row {
-      font-size: 8px;
-      padding: 0.5px 0;
-    }
-    .total-final {
-      font-size: 9px;
-      font-weight: 700;
-      padding-top: 1.5px;
-    }
-    .footer {
-      margin-top: 4px;
-      font-size: 7.5px;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="ticket">
-    <div class="center">
-      <div class="title">ESQUINA DOS DOCES</div>
-      <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
-      <div class="divider"></div>
-      <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="row header-cols">
-      <span>ITEM / QTD x UNIT</span>
-      <span>TOTAL</span>
-    </div>
-
-    <div>
-      ${linhasHtml}
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="totals-section">
-      <div class="row totals-row">
-        <span>Subtotal</span>
-        <span>${money(subtotal)}</span>
-      </div>
-      ${customAmount > 0 ? `
-      <div class="row totals-row">
-        <span>Valor Avulso</span>
-        <span>+ ${money(customAmount)}</span>
-      </div>` : ""}
-      ${discount > 0 ? `
-      <div class="row totals-row">
-        <span>Desconto</span>
-        <span>- ${money(discount)}</span>
-      </div>` : ""}
-      <div class="row total-final">
-        <span>TOTAL</span>
-        <span>${money(total)}</span>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="payment-section">
-      <div class="row totals-row">
-        <span>Pagamento</span>
-        <span class="bold">${escapeHtml(method)}</span>
-      </div>
-      ${method === "Dinheiro" && received !== null ? `
-      <div class="row totals-row">
-        <span>Recebido</span>
-        <span>${money(received)}</span>
-      </div>
-      <div class="row totals-row">
-        <span>Troco</span>
-        <span class="bold">${money(troco)}</span>
-      </div>` : ""}
-      <div class="footer">Obrigado pela preferência!</div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  // Cria ou reutiliza um iframe oculto para disparar a impressão sem sair da tela
-  let printFrame = document.getElementById("thermal-print-frame");
-  if (!printFrame) {
-    printFrame = document.createElement("iframe");
-    printFrame.id = "thermal-print-frame";
-    printFrame.style.position = "fixed";
-    printFrame.style.right = "0";
-    printFrame.style.bottom = "0";
-    printFrame.style.width = "0";
-    printFrame.style.height = "0";
-    printFrame.style.border = "0";
-    document.body.appendChild(printFrame);
-  }
-
-  const frameDoc = printFrame.contentWindow.document;
-  frameDoc.open();
-  frameDoc.write(cupomHtml);
-  frameDoc.close();
-
-  setTimeout(() => {
-    printFrame.contentWindow.focus();
-    printFrame.contentWindow.print();
-  }, 150);
-}
-
-// ==========================================
 // FUNÇÕES DE RENDERIZAÇÃO E SUPABASE
 // ==========================================
 
-// Salvar venda utilizando o Supabase (PostgreSQL RPC)
 async function saveCompletedSale(method, received) {
   if (state.placed) return false;
   const { items, subtotal, customAmount, grossTotal, discount, total } = getTotals();
   if (!items.length || !method) return false;
   
-  // Usa o crypto.randomUUID nativo do navegador ou a função do dados.js
   const vendaId = window.crypto ? window.crypto.randomUUID() : generateUUID();
   const agora = new Date().toISOString();
 
-  // 1. Prepara os dados da Venda
   const saleData = {
     id: vendaId,
     data_venda: agora,
@@ -325,7 +112,6 @@ async function saveCompletedSale(method, received) {
     troco: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
   };
 
-  // 2. Prepara os dados dos Itens da Venda (incluindo o Valor Avulso se houver)
   const itemsData = items.map(product => {
     const qty = product.isCustom ? 1 : state.cart[product.id];
     return {
@@ -339,7 +125,6 @@ async function saveCompletedSale(method, received) {
   });
   
   try {
-    // Chama a função (RPC) no PostgreSQL que insere a venda e os itens juntos com segurança
     const { error } = await supabaseClient.rpc('sincronizar_venda_offline', {
       p_venda: saleData,
       p_itens: itemsData
@@ -347,7 +132,6 @@ async function saveCompletedSale(method, received) {
 
     if (error) throw error;
 
-    // Dispara a impressão da notinha na OIA-8383 assim que a venda é salva
     imprimirNotinhaTermica({
       vendaId,
       dataVenda: agora,
@@ -379,14 +163,12 @@ function renderNavigation() {
 }
 
 function renderCategories() {
-  // Botão fixo para "Todas" as categorias
   const btnTodas = `
     <button class="category-button ${state.category === "Todas" ? "category-active" : ""}" data-cat="Todas">
       <span class="category-icon">${icon("dashboard", 24)}</span>
       <span>Todas</span>
     </button>`;
 
-  // Restante das categorias dinâmicas
   const btnCategorias = categories.map(([name, ic]) => {
     let iconeVisual = "";
     
@@ -407,54 +189,48 @@ function renderCategories() {
   $("categories").innerHTML = btnTodas + btnCategorias;
 }
 
-// Busca os produtos diretamente da tabela do Supabase
-async function renderProducts() {
-  $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
+// Filtra e ordena instantaneamente na memória (NÃO faz requisição ao banco a cada clique)
+function renderProducts() {
+  $("clear").classList.toggle("hidden", !state.query);
+  const q = state.query.trim().toLowerCase();
   
+  let visible = products.filter((p) => 
+    (state.category === "Todas" || p.category === state.category) && 
+    (!q || p.name.toLowerCase().includes(q) || String(p.barcode || "").includes(q))
+  );
+  
+  if (state.sort === "Ordem Alfabética") {
+    visible.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  } else if (state.sort === "Preço: Menor para o Maior") {
+    visible.sort((a, b) => a.price - b.price);
+  } else if (state.sort === "Preço: Maior para o Menor") {
+    visible.sort((a, b) => b.price - a.price);
+  }
+
+  $("products").innerHTML = visible.length ? visible.map((p) =>
+    `<button class="product-card" data-add="${p.id}" title="Adicionar ${escapeHtml(p.name)} ao pedido">
+      <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${escapeHtml(p.badge)}</span>` : ""}</span>
+      <span class="product-name">${escapeHtml(p.name)}</span><span class="product-price">${money(p.price)}</span>
+    </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
+}
+
+// Carrega do cache imediatamente e sincroniza com o Supabase em segundo plano
+async function loadProductsFromDB() {
+  if (!products.length) {
+    $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
+  }
+
   try {
-    const { data, error } = await supabaseClient
-      .from('produtos')
-      .select('*');
-
-    if (error) throw error;
-    
-    // O TRADUTOR: Converte as colunas do PostgreSQL para o formato esperado pelo HTML
-    products = (data || []).map(p => ({
-      id: p.id,
-      name: p.nome,
-      price: parseFloat(p.preco),
-      category: p.categoria,
-      barcode: p.codigo_barras,
-      photo: p.foto_url,
-      badge: p.badge
-    }));
-
-    $("clear").classList.toggle("hidden", !state.query);
-    const q = state.query.trim().toLowerCase();
-    
-    // Filtro atualizado para buscar por nome OU código de barras
-    let visible = products.filter((p) => 
-      (state.category === "Todas" || p.category === state.category) && 
-      (!q || p.name.toLowerCase().includes(q) || (p.barcode || "").includes(q))
-    );
-    
-    if (state.sort === "Ordem Alfabética") {
-      visible.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-    } else if (state.sort === "Preço: Menor para o Maior") {
-      visible.sort((a, b) => a.price - b.price);
-    } else if (state.sort === "Preço: Maior para o Menor") {
-      visible.sort((a, b) => b.price - a.price);
-    }
-  
-    $("products").innerHTML = visible.length ? visible.map((p) =>
-      `<button class="product-card" data-add="${p.id}" title="Adicionar ${escapeHtml(p.name)} ao pedido">
-        <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${escapeHtml(p.badge)}</span>` : ""}</span>
-        <span class="product-name">${escapeHtml(p.name)}</span><span class="product-price">${money(p.price)}</span>
-      </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
-      
+    await carregarProdutosComSeguranca(() => {
+      renderProducts();
+      renderCart();
+    });
   } catch (error) {
-    console.error("Erro ao carregar produtos do Supabase:", error);
-    $("products").innerHTML = '<p class="empty-products">Erro ao carregar o catálogo. Verifique a ligação.</p>';
+    $("products").innerHTML = `
+      <div class="empty-products">
+        <p>Erro ao carregar o catálogo. Verifique a ligação.</p>
+        <button type="button" class="btn-outline" id="retry-load-btn" style="margin-top:10px; padding:6px 14px; cursor:pointer;">Tentar novamente</button>
+      </div>`;
   }
 }
 
@@ -526,8 +302,8 @@ function initStaticIcons() {
 function renderAll() {
   renderNavigation();
   renderCategories();
-  renderProducts();
   renderCart();
+  loadProductsFromDB();
 }
 
 // ==========================================
@@ -578,7 +354,9 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest("button");
   if (!t) return;
   
-  if (t.dataset.cat) { 
+  if (t.id === "retry-load-btn") {
+    loadProductsFromDB();
+  } else if (t.dataset.cat) { 
     state.category = state.category === t.dataset.cat ? "Todas" : t.dataset.cat; 
     renderCategories();
     renderProducts(); 
@@ -592,7 +370,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Eventos do Dropdown Customizado de Filtros
 $("sort-trigger").addEventListener("click", (e) => {
   e.stopPropagation();
   $("sort-options").classList.toggle("hidden");
@@ -634,7 +411,6 @@ $("edit").addEventListener("click", () => {
   renderCart(); 
 });
 
-// Miniaturas do cadastro: usa a foto original sem distorcer; sem foto, usa um ícone de embalagem.
 function carregarMiniaturaPDF(produto) {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
@@ -779,7 +555,7 @@ async function gerarFaturaPDF() {
     const paginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= paginas; i++) {
       doc.setPage(i);
-      texto("50.509.556/0001-86 - Esquina dos Doces", margem, altura - 12, 8, false, 140);
+      texto("50.509.556/0001-86 - 50.509.556 Pedro Henrique Lopes de Oliveira", margem, altura - 12, 8, false, 140);
       texto(`${i} / ${paginas}`, direita, altura - 12, 8, false, 140, "right");
     }
     doc.save(`fatura-${agora.toISOString().slice(0, 10)}.pdf`);
@@ -794,10 +570,6 @@ async function gerarFaturaPDF() {
 if ($("invoice-btn")) {
   $("invoice-btn").addEventListener("click", gerarFaturaPDF);
 }
-
-$("logout").addEventListener("click", () => { 
-  window.location.href = "index.html"; 
-});
 
 $("mobile-trigger").addEventListener("click", () => { 
   state.mobileCart = !state.mobileCart; 
@@ -878,7 +650,7 @@ const modalDesconto = $("discount-modal");
 
 $("discount-btn").addEventListener("click", () => {
   const input = $("discount-input");
-  input.type = "text"; // Força o HTML a aceitar texto com vírgula
+  input.type = "text";
   input.inputMode = "numeric";
   input.value = state.discount ? formatCurrencyInput((state.discount * 100).toFixed(0)) : "";
   
@@ -887,7 +659,6 @@ $("discount-btn").addEventListener("click", () => {
   input.focus();
 });
 
-// Listener para aplicar a máscara enquanto digita o desconto
 $("discount-input").addEventListener("input", (e) => {
   e.target.value = formatCurrencyInput(e.target.value);
 });
@@ -952,7 +723,6 @@ function renderPayment() {
     const input = $("cash-input");
     setTimeout(() => input.focus(), 10);
 
-    // Listener para aplicar a máscara enquanto digita o dinheiro recebido
     input.addEventListener("input", (e) => {
       e.target.value = formatCurrencyInput(e.target.value);
 
@@ -1009,7 +779,6 @@ payBody.addEventListener("click", async (e) => {
       detail = `Dinheiro · Troco ${money(Math.max(received - total, 0))}`;
     }
     
-    // Aguarda a gravação no Supabase (e já aciona a impressão térmica na OIA-8383)
     const vendaSalva = await saveCompletedSale(payStep.method, received);
     if (!vendaSalva) return;
     
@@ -1024,9 +793,8 @@ payBody.addEventListener("click", async (e) => {
 initStaticIcons();
 renderAll();
 
-// Atualiza a tela de vendas quando os produtos mudam noutra aba
 window.addEventListener("storage", (e) => {
-  if (e.key === 'pdv:updateTrigger') { renderProducts(); renderCart(); }
+  if (e.key === 'pdv:updateTrigger') { loadProductsFromDB(); }
 });
 
 // ==========================================
@@ -1036,7 +804,6 @@ let barcodeBuffer = "";
 let barcodeTimer = null;
 
 document.addEventListener("keydown", (e) => {
-  // Ignora apenas se o operador estiver digitando nos campos de valor dos modais abertos
   const activeId = document.activeElement ? document.activeElement.id : "";
   if (
     activeId === "discount-input" ||
@@ -1046,17 +813,14 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Ignora teclas modificadoras enviadas por alguns leitores para não zerar o buffer
   if (["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "Unidentified"].includes(e.key)) {
     return;
   }
 
-  // Finaliza a leitura ao receber Enter ou Tab do leitor
   if (e.key === "Enter" || e.key === "Tab") {
     const code = barcodeBuffer.trim();
 
     if (code.length >= 4) {
-      // Impede que o Enter clique acidentalmente em botões focados na tela
       e.preventDefault();
       e.stopPropagation();
 
@@ -1071,7 +835,6 @@ document.addEventListener("keydown", (e) => {
         orderPanel.style.transform = "scale(1.02)";
         setTimeout(() => (orderPanel.style.transform = "scale(1)"), 150);
 
-        // Se o campo de pesquisa estava focado e recebeu os números, limpa-o
         if (activeId === "search" || $("search").value) {
           $("search").value = "";
           state.query = "";
@@ -1092,14 +855,13 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Acumula dígitos (e letras, caso haja códigos EAN/SKU alfanuméricos)
   if (/^[0-9a-zA-Z]$/.test(e.key)) {
     barcodeBuffer += e.key;
 
     clearTimeout(barcodeTimer);
     barcodeTimer = setTimeout(() => {
       barcodeBuffer = "";
-    }, 200); // 200ms acomoda o intervalo antes do Enter do leitor sem confundir com digitação manual
+    }, 200);
   } else {
     barcodeBuffer = "";
   }
