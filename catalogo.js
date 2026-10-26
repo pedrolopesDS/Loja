@@ -1,12 +1,10 @@
 // ==========================================
 // CATÁLOGO PÚBLICO (GRAVA EM PEDIDOS / MESSAGES)
 // ==========================================
-// Nota: A configuração do banco (supabaseClient) e a função generateUUID() 
-// vivem no ficheiro dados.js!
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -16,7 +14,6 @@ const catEmojis = {
   Pote: "🫙"
 };
 
-// ESTADO GLOBAL DA APLICAÇÃO
 const state = {
   category: "Todas", 
   query: "", 
@@ -25,12 +22,9 @@ const state = {
   mobileCart: false, 
   paymentDetail: null,
   cart: {}, 
-  cartOrder: [], // Guarda a ordem em que os produtos foram adicionados (mais recente no topo)
+  cartOrder: [],
 };
 
-// ==========================================
-// UTILITÁRIOS
-// ==========================================
 const $ = (id) => document.getElementById(id);
 
 const moneyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -54,7 +48,6 @@ const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 // FUNÇÕES DE RENDERIZAÇÃO E SUPABASE
 // ==========================================
 
-// Salva o pedido nas tabelas "pedidos" e "itens_pedido" (lidas pelo messages.html)
 async function saveCompletedOrder(method, clientName) {
   if (state.placed) return false;
   const { items, subtotal, total } = getTotals();
@@ -63,7 +56,6 @@ async function saveCompletedOrder(method, clientName) {
   const pedidoId = window.crypto ? window.crypto.randomUUID() : generateUUID();
   const agora = new Date().toISOString();
 
-  // 1. Prepara os dados do Pedido
   const orderData = {
     id: pedidoId,
     nome_cliente: clientName,
@@ -76,7 +68,6 @@ async function saveCompletedOrder(method, clientName) {
     troco: null
   };
 
-  // 2. Prepara os dados dos Itens do Pedido
   const itemsData = items.map(product => ({
     id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
     pedido_id: pedidoId,
@@ -136,52 +127,48 @@ function renderCategories() {
   $("categories").innerHTML = btnTodas + btnCategorias;
 }
 
-// Busca os produtos diretamente da tabela do Supabase
-async function renderProducts() {
-  $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
+// Filtra e ordena instantaneamente na memória (sem consultar o banco a cada clique)
+function renderProducts() {
+  $("clear").classList.toggle("hidden", !state.query);
+  const q = state.query.trim().toLowerCase();
   
+  let visible = products.filter((p) => 
+    (state.category === "Todas" || p.category === state.category) && 
+    (!q || p.name.toLowerCase().includes(q) || String(p.barcode || "").includes(q))
+  );
+  
+  if (state.sort === "Ordem Alfabética") {
+    visible.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  } else if (state.sort === "Preço: Menor para o Maior") {
+    visible.sort((a, b) => a.price - b.price);
+  } else if (state.sort === "Preço: Maior para o Menor") {
+    visible.sort((a, b) => b.price - a.price);
+  }
+
+  $("products").innerHTML = visible.length ? visible.map((p) =>
+    `<button class="product-card" data-add="${p.id}" title="Adicionar ${escapeHtml(p.name)} ao pedido">
+      <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${escapeHtml(p.badge)}</span>` : ""}</span>
+      <span class="product-name">${escapeHtml(p.name)}</span><span class="product-price">${money(p.price)}</span>
+    </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
+}
+
+// Carrega do cache imediatamente e sincroniza com o Supabase em segundo plano
+async function loadProductsFromDB() {
+  if (!products.length) {
+    $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
+  }
+
   try {
-    const { data, error } = await supabaseClient
-      .from('produtos')
-      .select('*');
-
-    if (error) throw error;
-    
-    products = (data || []).map(p => ({
-      id: p.id,
-      name: p.nome,
-      price: parseFloat(p.preco),
-      category: p.categoria,
-      barcode: p.codigo_barras,
-      photo: p.foto_url,
-      badge: p.badge
-    }));
-
-    $("clear").classList.toggle("hidden", !state.query);
-    const q = state.query.trim().toLowerCase();
-    
-    let visible = products.filter((p) => 
-      (state.category === "Todas" || p.category === state.category) && 
-      (!q || p.name.toLowerCase().includes(q) || (p.barcode || "").includes(q))
-    );
-    
-    if (state.sort === "Ordem Alfabética") {
-      visible.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-    } else if (state.sort === "Preço: Menor para o Maior") {
-      visible.sort((a, b) => a.price - b.price);
-    } else if (state.sort === "Preço: Maior para o Menor") {
-      visible.sort((a, b) => b.price - a.price);
-    }
-  
-    $("products").innerHTML = visible.length ? visible.map((p) =>
-      `<button class="product-card" data-add="${p.id}" title="Adicionar ${escapeHtml(p.name)} ao pedido">
-        <span class="product-image-wrap">${productThumb(p, "food-emoji")}${p.badge ? `<span class="badge">${escapeHtml(p.badge)}</span>` : ""}</span>
-        <span class="product-name">${escapeHtml(p.name)}</span><span class="product-price">${money(p.price)}</span>
-      </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
-      
+    await carregarProdutosComSeguranca(() => {
+      renderProducts();
+      renderCart();
+    });
   } catch (error) {
-    console.error("Erro ao carregar produtos do Supabase:", error);
-    $("products").innerHTML = '<p class="empty-products">Erro ao carregar o catálogo. Verifique a ligação.</p>';
+    $("products").innerHTML = `
+      <div class="empty-products">
+        <p>Erro ao carregar o catálogo. Verifique a ligação.</p>
+        <button type="button" class="btn-outline" id="retry-load-btn" style="margin-top:10px; padding:6px 14px; cursor:pointer;">Tentar novamente</button>
+      </div>`;
   }
 }
 
@@ -189,7 +176,6 @@ function renderCart() {
   const { items, subtotal, total } = getTotals();
   const count = items.reduce((s, p) => s + state.cart[p.id], 0);
 
-  // Botões de "-" e "+" sempre visíveis para o cliente ajustar a quantidade
   $("order-items").innerHTML = items.length ? items.map((p) =>
     `<div class="order-item">
       <div class="order-thumbnail">${productThumb(p, "food-emoji food-emoji-small")}</div>
@@ -224,8 +210,8 @@ function initStaticIcons() {
 
 function renderAll() {
   renderCategories();
-  renderProducts();
   renderCart();
+  loadProductsFromDB();
 }
 
 // ==========================================
@@ -264,7 +250,9 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest("button");
   if (!t) return;
   
-  if (t.dataset.cat) { 
+  if (t.id === "retry-load-btn") {
+    loadProductsFromDB();
+  } else if (t.dataset.cat) { 
     state.category = state.category === t.dataset.cat ? "Todas" : t.dataset.cat; 
     renderCategories();
     renderProducts(); 
@@ -388,27 +376,22 @@ payBody.addEventListener("click", async (e) => {
   const t = e.target.closest("button");
   if (!t) return;
   
-  // Pix -> Vai direto para digitar o nome
   if (t.dataset.pay === "pix") { 
     payStep = { type: "customer", method: "Pix" }; 
     renderPayment(); 
   }
-  // Cartão -> Escolhe Débito ou Crédito
   else if (t.dataset.pay === "card") { 
     payStep = { type: "card" }; 
     renderPayment(); 
   }
-  // Dinheiro -> Vai direto para digitar o nome
   else if (t.dataset.pay === "cash") { 
     payStep = { type: "customer", method: "Dinheiro" }; 
     renderPayment(); 
   }
-  // Débito/Crédito -> Vai direto para digitar o nome
   else if (t.dataset.card) { 
     payStep = { type: "customer", method: `Cartão (${t.dataset.card})` }; 
     renderPayment(); 
   }
-  // Botão Voltar (se veio de Débito/Crédito, volta para a tela de Cartão; senão, volta para os métodos)
   else if ("payBack" in t.dataset) { 
     if (payStep.type === "customer" && payStep.method && payStep.method.startsWith("Cartão")) {
       payStep = { type: "card" };
@@ -417,7 +400,6 @@ payBody.addEventListener("click", async (e) => {
     }
     renderPayment(); 
   }
-  // Botão Concluir pedido
   else if (t.id === "pay-confirm-order") {
     if (state.placed) return;
     const { items } = getTotals();
@@ -446,7 +428,7 @@ initStaticIcons();
 renderAll();
 
 window.addEventListener("storage", (e) => {
-  if (e.key === 'pdv:updateTrigger') { renderProducts(); renderCart(); }
+  if (e.key === 'pdv:updateTrigger') { loadProductsFromDB(); }
 });
 
 // ==========================================
@@ -457,7 +439,6 @@ let barcodeTimer = null;
 
 document.addEventListener("keydown", (e) => {
   const activeId = document.activeElement ? document.activeElement.id : "";
-  // Ignora o leitor se o cliente estiver digitando o próprio nome
   if (activeId === "client-name-input") {
     return;
   }
