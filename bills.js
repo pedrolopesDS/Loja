@@ -222,7 +222,7 @@ async function gerarFaturaVendaPDF(saleId, botao) {
     const paginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= paginas; i++) {
       doc.setPage(i);
-      texto("50.509.556/0001-86 - 50.509.556 Pedro Henrique Lopes de Oliveira", margem, altura - 12, 8, false, 140);
+      texto("50.509.556/0001-86 - Esquina dos Doces", margem, altura - 12, 8, false, 140);
       texto(`${i} / ${paginas}`, direita, altura - 12, 8, false, 140, "right");
     }
     doc.save(`fatura-${numero.toLowerCase()}.pdf`);
