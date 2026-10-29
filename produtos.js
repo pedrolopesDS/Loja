@@ -3,8 +3,8 @@
 // ==========================================
 // Nota: A configuração do banco (supabaseClient) vive no ficheiro dados.js!
 
-const CLOUD_NAME = "dxyz12345"; // Seu Cloud Name do Cloudinary
-const UPLOAD_PRESET = "pdv_produtos"; // Seu Upload Preset do Cloudinary
+const CLOUD_NAME = "dxyz12345"; // Mantenha aqui o seu Cloud Name do Cloudinary
+const UPLOAD_PRESET = "pdv_produtos"; // Mantenha aqui o seu Upload Preset do Cloudinary
 
 const $ = (id) => document.getElementById(id);
 const money = (n) =>
@@ -28,7 +28,6 @@ let deletingId = null;
 let photoData = "";
 let selectedFile = null;
 
-// Localiza o container da lista independentemente do ID usado no HTML
 function getListContainer() {
   return (
     document.getElementById("admin-list") ||
@@ -41,7 +40,7 @@ function getListContainer() {
 }
 
 // ==========================================
-// ESTILOS DA CHAVE SELETORA (ATIVO / INATIVO) E GRADE DA LINHA
+// ESTILOS DA CHAVE SELETORA (ATIVO / INATIVO) PRESERVANDO O DESIGN ORIGINAL
 // ==========================================
 function garantirEstilosStatusProduto() {
   if (document.getElementById("product-status-toggle-styles")) return;
@@ -49,27 +48,29 @@ function garantirEstilosStatusProduto() {
   const style = document.createElement("style");
   style.id = "product-status-toggle-styles";
   style.textContent = `
+    /* Mantém as proporções exatas (56px, 2fr, 1fr) e divide a coluna de 1.2fr em 0.6fr (preço) + 0.6fr (botão Ativo/Inativo) */
     .admin-row {
-      grid-template-columns: 56px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) auto auto !important;
+      grid-template-columns: 56px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 0.6fr) auto !important;
     }
 
     .product-status-toggle {
       display: inline-flex;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: center;
       gap: 8px;
       cursor: pointer;
       user-select: none;
-      min-width: 96px;
-      margin-right: 8px;
-      font-family: Arial, Helvetica, sans-serif;
+      justify-self: start;
     }
 
     .product-status-label {
-      font-size: 12.5px;
-      font-weight: 500;
+      font-family: Georgia, serif;
+      font-size: 13px;
+      font-weight: 400;
       color: var(--muted-foreground, #71717a);
       transition: color 0.15s ease;
+      min-width: 44px;
+      text-align: right;
     }
 
     .product-status-toggle.is-active .product-status-label {
@@ -180,7 +181,6 @@ function renderNav() {
 function renderFilterCategories() {
   const all = ["Todas", ...categories.map(([name]) => name)];
 
-  // 1. Dropdown customizado da barra de ferramentas ("Categoria Todas")
   if ($("filter-options")) {
     $("filter-options").innerHTML = all
       .map(
@@ -194,7 +194,6 @@ function renderFilterCategories() {
     $("filter").value = filterCat;
   }
 
-  // Caso exista filtro em chips
   if ($("cat-filter")) {
     $("cat-filter").innerHTML = all
       .map(
@@ -204,7 +203,6 @@ function renderFilterCategories() {
       .join("");
   }
 
-  // 2. Dropdown customizado de categoria dentro do modal de Novo/Editar Produto
   if ($("cat-options")) {
     $("cat-options").innerHTML = categories
       .map(
@@ -235,7 +233,7 @@ function initStaticIcons() {
 }
 
 // ==========================================
-// RENDERIZAÇÃO DA LISTA E BOTÃO ATIVO / INATIVO
+// RENDERIZAÇÃO DA LISTA COM ESTRUTURA ORIGINAL (.admin-title)
 // ==========================================
 function renderRows() {
   const listEl = getListContainer();
@@ -266,13 +264,13 @@ function renderRows() {
           const isAtivo = p.active !== false;
           return `
         <div class="admin-row">
-          <div class="admin-thumb">${productThumb(p, "food-emoji food-emoji-small")}</div>
-          <div class="admin-main">
-            <strong class="admin-name">${escapeHtml(p.name)}${p.badge ? ` <span class="badge-inline">${escapeHtml(p.badge)}</span>` : ""}</strong>
-            <span class="admin-barcode">${icon("barcode", 13)} ${p.barcode ? escapeHtml(formatBarcodeInput(p.barcode)) : "Sem código de barras"}</span>
-          </div>
-          <div><span class="admin-cat">${escapeHtml(p.category)}</span></div>
-          <strong class="admin-price">${money(p.price)}</strong>
+          ${productThumb(p, "food-emoji food-emoji-small")}
+          <span class="admin-title">
+            <strong>${escapeHtml(p.name)}${p.badge ? ` <small class="admin-badge">· ${escapeHtml(p.badge)}</small>` : ""}</strong>
+            <span>${icon("barcode", 13)} ${p.barcode ? escapeHtml(formatBarcodeInput(p.barcode)) : "sem código de barras"}</span>
+          </span>
+          <span><span class="admin-cat">${escapeHtml(p.category)}</span></span>
+          <span class="admin-price">${money(p.price)}</span>
           <div
             class="product-status-toggle ${isAtivo ? "is-active" : ""}"
             data-toggle-active="${escapeHtml(p.id)}"
@@ -284,8 +282,8 @@ function renderRows() {
             <span class="product-status-switch"></span>
           </div>
           <div class="admin-actions">
-            <button type="button" class="icon-btn" data-edit="${escapeHtml(p.id)}" title="Editar produto">${icon("pencil", 16)}</button>
-            <button type="button" class="icon-btn icon-btn-danger" data-del="${escapeHtml(p.id)}" title="Excluir produto">${icon("trash", 16)}</button>
+            <button type="button" class="icon-btn edit-button" data-edit="${escapeHtml(p.id)}" title="Editar">${icon("pencil", 15)}</button>
+            <button type="button" class="icon-btn edit-button admin-delete" data-del="${escapeHtml(p.id)}" title="Excluir">${icon("trash", 15)}</button>
           </div>
         </div>`;
         })
@@ -491,7 +489,6 @@ if ($("p-barcode")) {
   });
 }
 
-// Dropdown de Filtro da Barra Superior ("Categoria Todas")
 if ($("filter-trigger") && $("filter-options")) {
   $("filter-trigger").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -512,7 +509,6 @@ if ($("filter-trigger") && $("filter-options")) {
   });
 }
 
-// Dropdown de Categoria dentro do Modal de Produto
 if ($("cat-trigger") && $("cat-options")) {
   $("cat-trigger").addEventListener("click", (e) => {
     e.stopPropagation();
