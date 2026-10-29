@@ -3,8 +3,8 @@
 // ==========================================
 // Nota: A configuração do banco (supabaseClient) vive no ficheiro dados.js!
 
-const CLOUD_NAME = "dxyz12345"; // Mantenha aqui o seu Cloud Name do Cloudinary
-const UPLOAD_PRESET = "pdv_produtos"; // Mantenha aqui o seu Upload Preset do Cloudinary
+const CLOUD_NAME = "dh548byjf";
+const UPLOAD_PRESET = "pdv_uploads";
 
 const $ = (id) => document.getElementById(id);
 const money = (n) =>
@@ -48,7 +48,6 @@ function garantirEstilosStatusProduto() {
   const style = document.createElement("style");
   style.id = "product-status-toggle-styles";
   style.textContent = `
-    /* Mantém as proporções exatas (56px, 2fr, 1fr) e divide a coluna de 1.2fr em 0.6fr (preço) + 0.6fr (botão Ativo/Inativo) */
     .admin-row {
       grid-template-columns: 56px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 0.6fr) auto !important;
     }
@@ -369,10 +368,13 @@ async function alternarStatusProduto(productId, toggleEl) {
 // ==========================================
 // MODAL DE CADASTRO, EDIÇÃO E EXCLUSÃO
 // ==========================================
-function updatePreview() {
+function renderPhoto() {
   if (!$("photo-preview")) return;
   const fallbackIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted-foreground);">${paths.box}</svg>`;
   $("photo-preview").innerHTML = photoData ? `<img src="${photoData}" alt="Preview">` : fallbackIcon;
+
+  if ($("photo-pick")) $("photo-pick").classList.toggle("hidden", Boolean(photoData));
+  if ($("photo-remove")) $("photo-remove").classList.toggle("hidden", !photoData);
   if ($("clear-photo")) $("clear-photo").classList.toggle("hidden", !photoData);
 }
 
@@ -391,6 +393,7 @@ function openForm(prod = null) {
   selectedFile = null;
 
   if ($("form-title")) $("form-title").textContent = prod ? "Editar Produto" : "Novo Produto";
+  if ($("form-save")) $("form-save").textContent = prod ? "Salvar" : "Cadastrar";
   if ($("p-name")) $("p-name").value = prod ? prod.name : "";
   if ($("p-price")) $("p-price").value = prod ? formatCurrencyInput((prod.price * 100).toFixed(0)) : "";
   setCategoryDropdownValue(prod ? prod.category : categories[0][0]);
@@ -399,7 +402,7 @@ function openForm(prod = null) {
   if ($("p-photo")) $("p-photo").value = "";
   if ($("form-error")) $("form-error").classList.add("hidden");
 
-  updatePreview();
+  renderPhoto();
   if ($("form-modal")) $("form-modal").classList.remove("hidden");
   if ($("p-name")) $("p-name").focus();
 }
@@ -409,6 +412,83 @@ function closeForm() {
   editingId = null;
   photoData = "";
   selectedFile = null;
+}
+
+async function saveForm(e) {
+  if (e && typeof e.preventDefault === "function") e.preventDefault();
+
+  const name = $("p-name") ? $("p-name").value.trim() : "";
+  const rawPrice = $("p-price") ? $("p-price").value.replace(/\./g, "").replace(",", ".") : "";
+  const price = parseFloat(rawPrice);
+  const category = $("p-category") && $("p-category").value ? $("p-category").value : categories[0][0];
+  const barcode = $("p-barcode") ? $("p-barcode").value.replace(/\D/g, "") : "";
+  const badge = $("p-badge") ? $("p-badge").value.trim() : "";
+
+  const showError = (msg) => {
+    if ($("form-error")) {
+      $("form-error").textContent = msg;
+      $("form-error").classList.remove("hidden");
+    } else {
+      alert(msg);
+    }
+  };
+
+  if (!name) return showError("Informe o nome do produto.");
+  if (!Number.isFinite(price) || price <= 0) return showError("Informe um preço válido maior que zero.");
+
+  const submitBtn =
+    $("form-save") ||
+    ($("product-form") ? $("product-form").querySelector('button[type="submit"]') : null);
+  const originalBtnText = submitBtn ? submitBtn.textContent : editingId ? "Salvar" : "Cadastrar";
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Salvando...";
+  }
+
+  try {
+    let finalPhotoUrl = photoData || null;
+    if (selectedFile) {
+      finalPhotoUrl = await uploadToCloudinary(selectedFile);
+    }
+
+    const existingProd = editingId ? products.find((p) => String(p.id) === String(editingId)) : null;
+    const isAtivo = existingProd ? existingProd.active !== false : true;
+
+    const payload = {
+      nome: name,
+      preco: price,
+      categoria: category,
+      codigo_barras: barcode || null,
+      foto_url: finalPhotoUrl,
+      badge: badge || null,
+      ativo: isAtivo
+    };
+
+    if (editingId) {
+      const { error } = await supabaseClient.from("produtos").update(payload).eq("id", editingId);
+      if (error) throw error;
+    } else {
+      payload.id = window.crypto ? window.crypto.randomUUID() : generateUUID();
+      const { error } = await supabaseClient.from("produtos").insert([payload]);
+      if (error) throw error;
+    }
+
+    closeForm();
+    await renderList();
+    try {
+      localStorage.setItem("pdv:produtosCacheV1", JSON.stringify(products));
+      localStorage.setItem("pdv:updateTrigger", Date.now().toString());
+    } catch (_) {}
+  } catch (error) {
+    console.error("Erro ao guardar produto:", error);
+    showError("Erro ao guardar o produto: " + (error.message || "Verifique a consola."));
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalBtnText;
+    }
+  }
 }
 
 async function executarExclusaoProduto(id) {
@@ -452,8 +532,20 @@ function closeDeleteModal() {
 }
 
 // ==========================================
-// EVENTOS DE FORMULÁRIO E DROPDOWNS
+// EVENTOS DE FORMULÁRIO, FOTO E DROPDOWNS
 // ==========================================
+if ($("photo-preview")) {
+  $("photo-preview").addEventListener("click", () => {
+    if ($("p-photo")) $("p-photo").click();
+  });
+}
+
+if ($("photo-pick")) {
+  $("photo-pick").addEventListener("click", () => {
+    if ($("p-photo")) $("p-photo").click();
+  });
+}
+
 if ($("p-photo")) {
   $("p-photo").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
@@ -462,20 +554,21 @@ if ($("p-photo")) {
     const reader = new FileReader();
     reader.onload = () => {
       photoData = String(reader.result || "");
-      updatePreview();
+      renderPhoto();
     };
     reader.readAsDataURL(file);
   });
 }
 
-if ($("clear-photo")) {
-  $("clear-photo").addEventListener("click", () => {
-    photoData = "";
-    selectedFile = null;
-    if ($("p-photo")) $("p-photo").value = "";
-    updatePreview();
-  });
-}
+const limparFoto = () => {
+  photoData = "";
+  selectedFile = null;
+  if ($("p-photo")) $("p-photo").value = "";
+  renderPhoto();
+};
+
+if ($("photo-remove")) $("photo-remove").addEventListener("click", limparFoto);
+if ($("clear-photo")) $("clear-photo").addEventListener("click", limparFoto);
 
 if ($("p-price")) {
   $("p-price").addEventListener("input", (e) => {
@@ -532,77 +625,26 @@ document.addEventListener("click", (e) => {
   }
 });
 
-if ($("product-form")) {
-  $("product-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = $("p-name").value.trim();
-    const rawPrice = $("p-price").value.replace(/\./g, "").replace(",", ".");
-    const price = parseFloat(rawPrice);
-    const category = $("p-category") ? $("p-category").value : categories[0][0];
-    const barcode = $("p-barcode") ? $("p-barcode").value.replace(/\D/g, "") : "";
-    const badge = $("p-badge") ? $("p-badge").value.trim() : "";
-
-    const showError = (msg) => {
-      if ($("form-error")) {
-        $("form-error").textContent = msg;
-        $("form-error").classList.remove("hidden");
-      } else {
-        alert(msg);
-      }
-    };
-
-    if (!name) return showError("Informe o nome do produto.");
-    if (!Number.isFinite(price) || price <= 0) return showError("Informe um preço válido maior que zero.");
-
-    const submitBtn = $("product-form").querySelector('button[type="submit"]');
-    const originalBtnText = submitBtn ? submitBtn.textContent : "Salvar";
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = "A guardar...";
-    }
-
-    try {
-      let finalPhotoUrl = photoData || null;
-      if (selectedFile) {
-        finalPhotoUrl = await uploadToCloudinary(selectedFile);
-      }
-
-      const existingProd = editingId ? products.find((p) => String(p.id) === String(editingId)) : null;
-      const isAtivo = existingProd ? existingProd.active !== false : true;
-
-      const payload = {
-        nome: name,
-        preco: price,
-        categoria: category,
-        codigo_barras: barcode || null,
-        foto_url: finalPhotoUrl,
-        badge: badge || null,
-        ativo: isAtivo
-      };
-
-      if (editingId) {
-        const { error } = await supabaseClient.from("produtos").update(payload).eq("id", editingId);
-        if (error) throw error;
-      } else {
-        payload.id = window.crypto ? window.crypto.randomUUID() : generateUUID();
-        const { error } = await supabaseClient.from("produtos").insert([payload]);
-        if (error) throw error;
-      }
-
-      closeForm();
-      await renderList();
-      localStorage.setItem("pdv:updateTrigger", Date.now().toString());
-    } catch (error) {
-      console.error("Erro ao guardar produto:", error);
-      showError("Erro ao guardar o produto. Verifique a consola.");
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalBtnText;
-      }
-    }
-  });
+// Gatilho do botão "Cadastrar" / "Salvar" (#form-save) e do formulário
+if ($("form-save")) {
+  $("form-save").addEventListener("click", saveForm);
 }
+if ($("product-form")) {
+  $("product-form").addEventListener("submit", saveForm);
+}
+
+// Permite salvar pressionando Enter em qualquer campo do modal
+["p-name", "p-price", "p-barcode", "p-badge"].forEach((id) => {
+  const el = $(id);
+  if (el) {
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveForm();
+      }
+    });
+  }
+});
 
 // ==========================================
 // CLIQUES GERAIS (TOGGLE ATIVO/INATIVO, EDITAR, EXCLUIR)
