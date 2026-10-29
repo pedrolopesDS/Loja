@@ -387,3 +387,61 @@ button { cursor: pointer; border: 0; background: transparent; color: inherit; di
 .custom-amount-button:hover {
   filter: brightness(1.05);
 }
+
+/* Chave seletora Ativo / Inativo na página de Produtos */
+.product-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  min-width: 96px;
+}
+
+.product-status-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted-foreground, #71717a);
+  transition: color 0.15s ease;
+}
+
+.product-status-toggle.is-active .product-status-label {
+  color: var(--foreground, #18181b);
+}
+
+.product-status-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: #8e9297;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.product-status-toggle.is-active .product-status-switch {
+  background: #84cc16;
+}
+
+.product-status-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.product-status-toggle.is-active .product-status-switch::after {
+  transform: translateX(18px);
+}
+
+.product-status-toggle.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
