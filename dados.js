@@ -23,6 +23,7 @@ function mapearProdutosBanco(data) {
     barcode: p.codigo_barras,
     photo: p.foto_url,
     badge: p.badge
+    active: p.ativo !== false
   }));
 }
 
