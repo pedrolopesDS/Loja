@@ -3,8 +3,8 @@
 // ==========================================
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -35,7 +35,7 @@ const icon = (name, size = 24, stroke = 1.5) =>
 
 function getTotals() {
   const items = state.cartOrder
-    .map((id) => products.find((p) => String(p.id) === String(id)))
+    .map((id) => products.find((p) => String(p.id) === String(id) && p.active !== false))
     .filter((p) => p && (state.cart[p.id] || 0) > 0);
 
   const subtotal = items.reduce((s, p) => s + p.price * state.cart[p.id], 0);
@@ -127,12 +127,13 @@ function renderCategories() {
   $("categories").innerHTML = btnTodas + btnCategorias;
 }
 
-// Filtra e ordena instantaneamente na memória (sem consultar o banco a cada clique)
+// Filtra apenas produtos com active !== false
 function renderProducts() {
   $("clear").classList.toggle("hidden", !state.query);
   const q = state.query.trim().toLowerCase();
   
   let visible = products.filter((p) => 
+    p.active !== false &&
     (state.category === "Todas" || p.category === state.category) && 
     (!q || p.name.toLowerCase().includes(q) || String(p.barcode || "").includes(q))
   );
@@ -152,7 +153,6 @@ function renderProducts() {
     </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
 }
 
-// Carrega do cache imediatamente e sincroniza com o Supabase em segundo plano
 async function loadProductsFromDB() {
   if (!products.length) {
     $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
@@ -455,7 +455,7 @@ document.addEventListener("keydown", (e) => {
       e.stopPropagation();
 
       const product = products.find(
-        (p) => String(p.barcode || "").trim() === code
+        (p) => p.active !== false && String(p.barcode || "").trim() === code
       );
 
       if (product) {
