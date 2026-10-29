@@ -3,14 +3,14 @@
 // ==========================================
 // Nota: A configuração do banco (supabaseClient) vive no ficheiro dados.js!
 
-// Configurações do Cloudinary para upload de fotos dos produtos
-const CLOUD_NAME = "dxyz12345"; // Mantenha aqui o seu Cloud Name do Cloudinary
-const UPLOAD_PRESET = "pdv_produtos"; // Mantenha aqui o seu Upload Preset do Cloudinary
+const CLOUD_NAME = "dxyz12345"; // Seu Cloud Name do Cloudinary
+const UPLOAD_PRESET = "pdv_produtos"; // Seu Upload Preset do Cloudinary
 
 const $ = (id) => document.getElementById(id);
-const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+const money = (n) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n) || 0);
 const icon = (name, size = 24, stroke = 1.5) =>
-  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ""}</svg>`;
 
 const navigation = [
   ["Home", "bag", "index.html"],
@@ -24,11 +24,24 @@ const navigation = [
 let query = "";
 let filterCat = "Todas";
 let editingId = null;
+let deletingId = null;
 let photoData = "";
 let selectedFile = null;
 
+// Localiza o container da lista independentemente do ID usado no HTML
+function getListContainer() {
+  return (
+    document.getElementById("admin-list") ||
+    document.getElementById("list") ||
+    document.getElementById("product-list") ||
+    document.getElementById("products-list") ||
+    document.getElementById("products") ||
+    document.querySelector(".admin-list")
+  );
+}
+
 // ==========================================
-// ESTILOS DA CHAVE SELETORA (ATIVO / INATIVO) E ALINHAMENTO DA LINHA
+// ESTILOS DA CHAVE SELETORA (ATIVO / INATIVO) E GRADE DA LINHA
 // ==========================================
 function garantirEstilosStatusProduto() {
   if (document.getElementById("product-status-toggle-styles")) return;
@@ -36,7 +49,6 @@ function garantirEstilosStatusProduto() {
   const style = document.createElement("style");
   style.id = "product-status-toggle-styles";
   style.textContent = `
-    /* Ajusta a grade de 5 para 6 colunas para acomodar o botão entre o preço e as ações */
     .admin-row {
       grid-template-columns: 56px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) auto auto !important;
     }
@@ -113,7 +125,7 @@ function garantirEstilosStatusProduto() {
 // MÁSCARAS DE MOEDA E CÓDIGO DE BARRAS (EAN-13)
 // ==========================================
 function formatCurrencyInput(value) {
-  let v = String(value).replace(/\D/g, "");
+  let v = String(value || "").replace(/\D/g, "");
   if (!v) return "";
   v = (parseInt(v, 10) / 100).toFixed(2);
   v = v.replace(".", ",");
@@ -151,9 +163,10 @@ async function uploadToCloudinary(file) {
 }
 
 // ==========================================
-// NAVEGAÇÃO E FILTROS
+// NAVEGAÇÃO E DROPDOWNS DE CATEGORIA
 // ==========================================
 function renderNav() {
+  if (!$("nav")) return;
   $("nav").innerHTML = navigation
     .map(
       ([name, ic, href]) =>
@@ -166,6 +179,22 @@ function renderNav() {
 
 function renderFilterCategories() {
   const all = ["Todas", ...categories.map(([name]) => name)];
+
+  // 1. Dropdown customizado da barra de ferramentas ("Categoria Todas")
+  if ($("filter-options")) {
+    $("filter-options").innerHTML = all
+      .map(
+        (c) =>
+          `<div class="custom-select-option ${filterCat === c ? "selected" : ""}" data-val="${escapeHtml(c)}">${escapeHtml(c)}</div>`
+      )
+      .join("");
+  }
+
+  if ($("filter")) {
+    $("filter").value = filterCat;
+  }
+
+  // Caso exista filtro em chips
   if ($("cat-filter")) {
     $("cat-filter").innerHTML = all
       .map(
@@ -175,12 +204,7 @@ function renderFilterCategories() {
       .join("");
   }
 
-  if ($("p-category")) {
-    $("p-category").innerHTML = categories
-      .map(([name]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-      .join("");
-  }
-
+  // 2. Dropdown customizado de categoria dentro do modal de Novo/Editar Produto
   if ($("cat-options")) {
     $("cat-options").innerHTML = categories
       .map(
@@ -189,31 +213,54 @@ function renderFilterCategories() {
       )
       .join("");
   }
+
+  if ($("p-category") && $("p-category").tagName === "SELECT") {
+    $("p-category").innerHTML = categories
+      .map(([name]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+      .join("");
+  }
+}
+
+function initStaticIcons() {
+  if ($("search-icon")) $("search-icon").innerHTML = icon("search", 17, 1.7);
+  if ($("clear")) $("clear").innerHTML = icon("x", 14);
+  if ($("filter-chevron")) $("filter-chevron").innerHTML = icon("chevron", 14);
+  if ($("cat-chevron")) $("cat-chevron").innerHTML = icon("chevron", 14);
+  if ($("new-product")) {
+    $("new-product").innerHTML = `${icon("plus", 17, 2)}<span>Novo Produto</span>`;
+  }
+  if ($("logout")) {
+    $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
+  }
 }
 
 // ==========================================
-// LISTAGEM E ALTERNÂNCIA ATIVO / INATIVO NO SUPABASE
+// RENDERIZAÇÃO DA LISTA E BOTÃO ATIVO / INATIVO
 // ==========================================
 function renderRows() {
+  const listEl = getListContainer();
+  if (!listEl) return;
+
   if ($("clear")) $("clear").classList.toggle("hidden", !query);
   const q = query.trim().toLowerCase();
 
-  const visible = products
-    .filter(
-      (p) =>
+  const visible = (products || [])
+    .filter((p) => {
+      const nome = String(p.name || "").toLowerCase();
+      const cat = String(p.category || "").toLowerCase();
+      const bar = String(p.barcode || "");
+      return (
         (filterCat === "Todas" || p.category === filterCat) &&
-        (!q ||
-          p.name.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          String(p.barcode || "").includes(q))
-    )
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+        (!q || nome.includes(q) || cat.includes(q) || bar.includes(q))
+      );
+    })
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
 
   if ($("product-count")) {
     $("product-count").textContent = `${visible.length} ${visible.length === 1 ? "item" : "itens"}`;
   }
 
-  $("admin-list").innerHTML = visible.length
+  listEl.innerHTML = visible.length
     ? visible
         .map((p) => {
           const isAtivo = p.active !== false;
@@ -237,8 +284,8 @@ function renderRows() {
             <span class="product-status-switch"></span>
           </div>
           <div class="admin-actions">
-            <button class="icon-btn" data-edit="${escapeHtml(p.id)}" title="Editar produto">${icon("pencil", 16)}</button>
-            <button class="icon-btn icon-btn-danger" data-del="${escapeHtml(p.id)}" title="Excluir produto">${icon("trash", 16)}</button>
+            <button type="button" class="icon-btn" data-edit="${escapeHtml(p.id)}" title="Editar produto">${icon("pencil", 16)}</button>
+            <button type="button" class="icon-btn icon-btn-danger" data-del="${escapeHtml(p.id)}" title="Excluir produto">${icon("trash", 16)}</button>
           </div>
         </div>`;
         })
@@ -248,9 +295,10 @@ function renderRows() {
 
 async function renderList() {
   garantirEstilosStatusProduto();
+  const listEl = getListContainer();
 
-  if (!products.length && $("admin-list")) {
-    $("admin-list").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
+  if (listEl && (!products || !products.length)) {
+    listEl.innerHTML = '<p class="empty-products">A carregar produtos...</p>';
   }
 
   try {
@@ -276,8 +324,8 @@ async function renderList() {
     }
   } catch (error) {
     console.error("Erro ao carregar produtos do Supabase:", error);
-    if ($("admin-list")) {
-      $("admin-list").innerHTML = '<p class="empty-products">Erro ao carregar produtos. Verifique a ligação.</p>';
+    if (listEl) {
+      listEl.innerHTML = '<p class="empty-products">Erro ao carregar produtos. Verifique a ligação.</p>';
     }
   }
 }
@@ -299,7 +347,6 @@ async function alternarStatusProduto(productId, toggleEl) {
 
     prod.active = novoStatus;
 
-    // Atualiza o cache local e notifica o catalogo.html e o index.html
     try {
       localStorage.setItem("pdv:produtosCacheV1", JSON.stringify(products));
       localStorage.setItem("pdv:updateTrigger", Date.now().toString());
@@ -313,14 +360,16 @@ async function alternarStatusProduto(productId, toggleEl) {
     }
   } catch (error) {
     console.error("Erro ao atualizar status do produto:", error);
-    alert("Não foi possível alterar o status do produto. Verifique se você executou o comando SQL para criar a coluna 'ativo' no Supabase.");
+    alert(
+      "Não foi possível alterar o status do produto. Certifique-se de ter executado no SQL Editor do Supabase:\n\nALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true;"
+    );
   } finally {
     if (toggleEl) toggleEl.classList.remove("is-loading");
   }
 }
 
 // ==========================================
-// MODAL DE CADASTRO E EDIÇÃO DE PRODUTO
+// MODAL DE CADASTRO, EDIÇÃO E EXCLUSÃO
 // ==========================================
 function updatePreview() {
   if (!$("photo-preview")) return;
@@ -331,8 +380,7 @@ function updatePreview() {
 
 function setCategoryDropdownValue(catName) {
   const val = catName || categories[0][0];
-  const inputCat = $("p-category");
-  if (inputCat) inputCat.value = val;
+  if ($("p-category")) $("p-category").value = val;
 
   document.querySelectorAll("#cat-options .custom-select-option").forEach((el) => {
     el.classList.toggle("selected", el.dataset.val === val);
@@ -354,17 +402,60 @@ function openForm(prod = null) {
   if ($("form-error")) $("form-error").classList.add("hidden");
 
   updatePreview();
-  $("form-modal").classList.remove("hidden");
+  if ($("form-modal")) $("form-modal").classList.remove("hidden");
   if ($("p-name")) $("p-name").focus();
 }
 
 function closeForm() {
-  $("form-modal").classList.add("hidden");
+  if ($("form-modal")) $("form-modal").classList.add("hidden");
   editingId = null;
   photoData = "";
   selectedFile = null;
 }
 
+async function executarExclusaoProduto(id) {
+  const prod = products.find((p) => String(p.id) === String(id));
+  if (!prod) return;
+
+  try {
+    const { error } = await supabaseClient.from("produtos").delete().eq("id", prod.id);
+    if (error) throw error;
+
+    products = products.filter((p) => String(p.id) !== String(prod.id));
+    try {
+      localStorage.setItem("pdv:produtosCacheV1", JSON.stringify(products));
+      localStorage.setItem("pdv:updateTrigger", Date.now().toString());
+    } catch (_) {}
+    renderRows();
+  } catch (error) {
+    console.error("Erro ao eliminar produto:", error);
+    alert("Não foi possível eliminar o produto.");
+  }
+}
+
+function pedirConfirmacaoExclusao(id) {
+  const prod = products.find((p) => String(p.id) === String(id));
+  if (!prod) return;
+
+  if ($("delete-modal")) {
+    deletingId = prod.id;
+    if ($("delete-name")) $("delete-name").textContent = prod.name;
+    $("delete-modal").classList.remove("hidden");
+  } else {
+    if (confirm(`Tem a certeza que deseja eliminar "${prod.name}"?`)) {
+      executarExclusaoProduto(prod.id);
+    }
+  }
+}
+
+function closeDeleteModal() {
+  if ($("delete-modal")) $("delete-modal").classList.add("hidden");
+  deletingId = null;
+}
+
+// ==========================================
+// EVENTOS DE FORMULÁRIO E DROPDOWNS
+// ==========================================
 if ($("p-photo")) {
   $("p-photo").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
@@ -400,7 +491,28 @@ if ($("p-barcode")) {
   });
 }
 
-// Eventos do Dropdown Customizado de Categorias no Modal
+// Dropdown de Filtro da Barra Superior ("Categoria Todas")
+if ($("filter-trigger") && $("filter-options")) {
+  $("filter-trigger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("filter-options").classList.toggle("hidden");
+  });
+
+  $("filter-options").addEventListener("click", (e) => {
+    const opt = e.target.closest(".custom-select-option");
+    if (!opt) return;
+    filterCat = opt.dataset.val;
+    if ($("filter")) $("filter").value = filterCat;
+
+    document.querySelectorAll("#filter-options .custom-select-option").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.val === filterCat);
+    });
+    $("filter-options").classList.add("hidden");
+    renderRows();
+  });
+}
+
+// Dropdown de Categoria dentro do Modal de Produto
 if ($("cat-trigger") && $("cat-options")) {
   $("cat-trigger").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -413,13 +525,16 @@ if ($("cat-trigger") && $("cat-options")) {
     setCategoryDropdownValue(opt.dataset.val);
     $("cat-options").classList.add("hidden");
   });
-
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest("#cat-wrapper") && $("cat-options")) {
-      $("cat-options").classList.add("hidden");
-    }
-  });
 }
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#filter-wrapper") && $("filter-options")) {
+    $("filter-options").classList.add("hidden");
+  }
+  if (!e.target.closest("#cat-wrapper") && $("cat-options")) {
+    $("cat-options").classList.add("hidden");
+  }
+});
 
 if ($("product-form")) {
   $("product-form").addEventListener("submit", async (e) => {
@@ -427,8 +542,8 @@ if ($("product-form")) {
     const name = $("p-name").value.trim();
     const rawPrice = $("p-price").value.replace(/\./g, "").replace(",", ".");
     const price = parseFloat(rawPrice);
-    const category = $("p-category").value;
-    const barcode = $("p-barcode").value.replace(/\D/g, "");
+    const category = $("p-category") ? $("p-category").value : categories[0][0];
+    const barcode = $("p-barcode") ? $("p-barcode").value.replace(/\D/g, "") : "";
     const badge = $("p-badge") ? $("p-badge").value.trim() : "";
 
     const showError = (msg) => {
@@ -456,7 +571,6 @@ if ($("product-form")) {
         finalPhotoUrl = await uploadToCloudinary(selectedFile);
       }
 
-      // Mantém o status atual ao editar ou cria como Ativo (true) ao cadastrar novo
       const existingProd = editingId ? products.find((p) => String(p.id) === String(editingId)) : null;
       const isAtivo = existingProd ? existingProd.active !== false : true;
 
@@ -495,9 +609,9 @@ if ($("product-form")) {
 }
 
 // ==========================================
-// EVENTOS GERAIS DA PÁGINA
+// CLIQUES GERAIS (TOGGLE ATIVO/INATIVO, EDITAR, EXCLUIR)
 // ==========================================
-document.addEventListener("click", async (e) => {
+document.addEventListener("click", (e) => {
   const toggleBtn = e.target.closest("[data-toggle-active]");
   if (toggleBtn) {
     alternarStatusProduto(toggleBtn.dataset.toggleActive, toggleBtn);
@@ -515,24 +629,7 @@ document.addEventListener("click", async (e) => {
     const prod = products.find((p) => String(p.id) === String(btn.dataset.edit));
     if (prod) openForm(prod);
   } else if (btn.dataset.del) {
-    const prod = products.find((p) => String(p.id) === String(btn.dataset.del));
-    if (!prod) return;
-    if (!confirm(`Tem a certeza que deseja eliminar "${prod.name}"?`)) return;
-
-    try {
-      const { error } = await supabaseClient.from("produtos").delete().eq("id", prod.id);
-      if (error) throw error;
-
-      products = products.filter((p) => String(p.id) !== String(prod.id));
-      try {
-        localStorage.setItem("pdv:produtosCacheV1", JSON.stringify(products));
-        localStorage.setItem("pdv:updateTrigger", Date.now().toString());
-      } catch (_) {}
-      renderRows();
-    } catch (error) {
-      console.error("Erro ao eliminar produto:", error);
-      alert("Não foi possível eliminar o produto.");
-    }
+    pedirConfirmacaoExclusao(btn.dataset.del);
   }
 });
 
@@ -541,6 +638,21 @@ if ($("form-cancel")) $("form-cancel").addEventListener("click", closeForm);
 if ($("form-modal")) {
   $("form-modal").addEventListener("click", (e) => {
     if (e.target === $("form-modal")) closeForm();
+  });
+}
+
+if ($("delete-cancel")) $("delete-cancel").addEventListener("click", closeDeleteModal);
+if ($("delete-confirm")) {
+  $("delete-confirm").addEventListener("click", async () => {
+    if (!deletingId) return;
+    const idParaExcluir = deletingId;
+    closeDeleteModal();
+    await executarExclusaoProduto(idParaExcluir);
+  });
+}
+if ($("delete-modal")) {
+  $("delete-modal").addEventListener("click", (e) => {
+    if (e.target === $("delete-modal")) closeDeleteModal();
   });
 }
 
@@ -559,13 +671,7 @@ if ($("clear")) {
   });
 }
 
-// Inicialização dos ícones estáticos
-if ($("search-icon")) $("search-icon").innerHTML = icon("search", 17, 1.7);
-if ($("clear")) $("clear").innerHTML = icon("x", 14);
-if ($("cat-chevron")) $("cat-chevron").innerHTML = icon("chevron", 14);
-if ($("new-product-icon")) $("new-product-icon").innerHTML = icon("plus", 16, 2);
-if ($("logout")) $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
-
+initStaticIcons();
 renderNav();
 renderFilterCategories();
 renderList();
