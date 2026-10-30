@@ -1,6 +1,6 @@
 // ==========================================
 // FRENTE DE CAIXA (INTEGRADA AO SUPABASE)
-// ==========================================
+// =========================================
 
 const catImages = { 
   Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
