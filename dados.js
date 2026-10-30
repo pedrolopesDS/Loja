@@ -586,16 +586,15 @@ function iniciarMonitorGlobalDePedidos() {
 })();
 
 // ==========================================
-// 6. GERADOR DE QR CODE VETORIAL (SVG) E IMPRESSÃO 58mm
+// 6. GERADOR DE QR CODE BITMAP (PNG) E IMPRESSÃO 58mm
 // ==========================================
-function gerarQRCodeSVG(texto) {
+function gerarQRCodeDataURL(texto) {
   const str = String(texto || "").trim().slice(0, 14);
   const bytes = [];
   for (let i = 0; i < str.length; i++) {
     bytes.push(str.charCodeAt(i) & 0xff);
   }
 
-  // Monta os 16 bytes de dados (Version 1-M em modo Byte)
   const bits = [];
   const pushBits = (val, n) => {
     for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1);
@@ -620,7 +619,6 @@ function gerarQRCodeSVG(texto) {
     padToggle = !padToggle;
   }
 
-  // Calcula os 10 bytes de correção de erro Reed-Solomon (Nível M)
   const gfMul = (x, y) => {
     let z = 0;
     for (let i = 7; i >= 0; i--) {
@@ -714,16 +712,27 @@ function gerarQRCodeSVG(texto) {
     }
   }
 
-  let pathData = "";
+  const scale = 4;
+  const margin = 1;
+  const dim = (size + margin * 2) * scale;
+  const canvas = document.createElement("canvas");
+  canvas.width = dim;
+  canvas.height = dim;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, dim, dim);
+
+  ctx.fillStyle = "#000000";
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
       if (matrix[r][c]) {
-        pathData += `M${c + 1},${r + 1}h1v1h-1z`;
+        ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
       }
     }
   }
 
-  return `<svg viewBox="0 0 ${size + 2} ${size + 2}" width="100%" height="100%" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#fff"/><path d="${pathData}" fill="#000"/></svg>`;
+  return canvas.toDataURL("image/png");
 }
 
 function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount = 0, discount = 0, total, method, received = null, clientName = null }) {
@@ -733,9 +742,11 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   const dataFormatada = dataObj.toLocaleDateString("pt-BR");
   const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const codigoCurto = String(vendaId).slice(-8).toUpperCase();
-  const qrCodeSvg = gerarQRCodeSVG(codigoCurto);
+  const qrCodeDataUrl = gerarQRCodeDataURL(codigoCurto);
 
-  const linhasHtml = (items || [])
+  const listaItens = items || [];
+
+  const linhasHtml = listaItens
     .map((p) => {
       const qtd =
         p.quantity != null
@@ -766,50 +777,114 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   <meta charset="UTF-8">
   <title>Cupom #${codigoCurto}</title>
   <style>
-    @page { size: 58mm auto; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page {
+      size: 58mm auto;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     html, body {
       width: 58mm;
       background: #fff;
       color: #000;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 8px;
-      line-height: 1.2;
+      font-size: 9px;
+      line-height: 1.25;
       -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .ticket { width: 100%; padding: 2mm 6.5mm 4mm 6.5mm; }
-    .header-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 2mm;
+    .ticket {
       width: 100%;
+      padding: 2mm 4.5mm 4mm 4.5mm;
+    }
+    .header-top {
+      display: table;
+      width: 100%;
+      table-layout: fixed;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .header-info {
-      flex: 1;
-      min-width: 0;
+      display: table-cell;
+      vertical-align: middle;
       text-align: left;
+      padding-right: 1.5mm;
+    }
+    .header-qr-cell {
+      display: table-cell;
+      vertical-align: top;
+      width: 12.5mm;
+      text-align: right;
     }
     .header-qr {
-      width: 15.5mm;
-      height: 15.5mm;
-      flex-shrink: 0;
+      display: block;
+      width: 12.5mm;
+      height: 12.5mm;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
     .center { text-align: center; }
     .bold { font-weight: 700; }
-    .title { font-size: 8.5px; font-weight: 700; line-height: 1.15; }
-    .subtitle { font-size: 7.5px; }
-    .divider { border-top: 1px dashed #000; margin: 2.5px 0; }
-    .row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; width: 100%; }
-    .row span:last-child { white-space: nowrap; flex-shrink: 0; }
-    .header-cols { font-size: 7.5px; font-weight: 700; margin-bottom: 2px; }
-    .item { margin-bottom: 2.5px; page-break-inside: avoid; break-inside: avoid; }
-    .item-name { font-weight: 700; font-size: 8px; word-wrap: break-word; overflow-wrap: anywhere; }
-    .item-values { font-size: 7.5px; }
-    .totals-section, .payment-section { page-break-inside: avoid; break-inside: avoid; }
-    .totals-row { font-size: 8px; padding: 0.5px 0; }
-    .total-final { font-size: 9px; font-weight: 700; padding-top: 1.5px; }
-    .footer { margin-top: 4px; font-size: 7.5px; text-align: center; }
+    .title { font-size: 10px; font-weight: 700; line-height: 1.15; }
+    .subtitle { font-size: 8px; line-height: 1.25; }
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 3px 0;
+      height: 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px;
+      width: 100%;
+    }
+    .row span:last-child {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .header-cols {
+      font-size: 8px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .item {
+      margin-bottom: 3px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .item-name {
+      font-weight: 700;
+      font-size: 9px;
+      line-height: 1.2;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    .item-values {
+      font-size: 8.5px;
+      line-height: 1.2;
+    }
+    .totals-section, .payment-section {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .totals-row {
+      font-size: 8.5px;
+      padding: 0.5px 0;
+    }
+    .total-final {
+      font-size: 10px;
+      font-weight: 700;
+      padding-top: 1.5px;
+    }
+    .footer {
+      margin-top: 4px;
+      font-size: 8px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -818,11 +893,13 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       <div class="header-info">
         <div class="title">ESQUINA DOS DOCES</div>
         <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
-        <div class="subtitle">Venda #${codigoCurto}</div>
+        <div class="subtitle" style="margin-top: 1.5px;">Venda #${codigoCurto}</div>
         <div class="subtitle">${dataFormatada} ${horaFormatada}</div>
-        ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
+        ${clientName ? `<div class="subtitle bold" style="margin-top: 1px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
       </div>
-      <div class="header-qr">${qrCodeSvg}</div>
+      <div class="header-qr-cell">
+        <img class="header-qr" src="${qrCodeDataUrl}" alt="QR #${codigoCurto}" />
+      </div>
     </div>
     <div class="divider"></div>
     <div class="row header-cols"><span>ITEM / QTD x UNIT</span><span>TOTAL</span></div>
@@ -867,5 +944,5 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   setTimeout(() => {
     printFrame.contentWindow.focus();
     printFrame.contentWindow.print();
-  }, 150);
+  }, 220);
 }
