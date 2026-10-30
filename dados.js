@@ -586,8 +586,146 @@ function iniciarMonitorGlobalDePedidos() {
 })();
 
 // ==========================================
-// 6. IMPRESSÃO TÉRMICA 58mm COMPARTILHADA (OIA-8383)
+// 6. GERADOR DE QR CODE VETORIAL (SVG) E IMPRESSÃO 58mm
 // ==========================================
+function gerarQRCodeSVG(texto) {
+  const str = String(texto || "").trim().slice(0, 14);
+  const bytes = [];
+  for (let i = 0; i < str.length; i++) {
+    bytes.push(str.charCodeAt(i) & 0xff);
+  }
+
+  // Monta os 16 bytes de dados (Version 1-M em modo Byte)
+  const bits = [];
+  const pushBits = (val, n) => {
+    for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1);
+  };
+
+  pushBits(0b0100, 4);
+  pushBits(bytes.length, 8);
+  for (let i = 0; i < bytes.length; i++) pushBits(bytes[i], 8);
+  pushBits(0b0000, 4);
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const dataBytes = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    dataBytes.push(b);
+  }
+
+  let padToggle = true;
+  while (dataBytes.length < 16) {
+    dataBytes.push(padToggle ? 0xec : 0x11);
+    padToggle = !padToggle;
+  }
+
+  // Calcula os 10 bytes de correção de erro Reed-Solomon (Nível M)
+  const gfMul = (x, y) => {
+    let z = 0;
+    for (let i = 7; i >= 0; i--) {
+      z = (z << 1) ^ ((z >> 7) * 0x11d);
+      z ^= ((y >> i) & 1) * x;
+    }
+    return z;
+  };
+
+  const degree = 10;
+  const divisor = new Array(degree).fill(0);
+  divisor[degree - 1] = 1;
+  let root = 1;
+  for (let i = 0; i < degree; i++) {
+    for (let j = 0; j < degree; j++) {
+      divisor[j] = gfMul(divisor[j], root);
+      if (j + 1 < degree) divisor[j] ^= divisor[j + 1];
+    }
+    root = gfMul(root, 0x02);
+  }
+
+  const rem = new Array(degree).fill(0);
+  for (const b of dataBytes) {
+    const factor = b ^ rem.shift();
+    rem.push(0);
+    for (let j = 0; j < degree; j++) {
+      rem[j] ^= gfMul(divisor[j], factor);
+    }
+  }
+
+  const codewords = dataBytes.concat(rem);
+  const size = 21;
+  const matrix = Array.from({ length: size }, () => new Array(size).fill(false));
+  const isFunc = Array.from({ length: size }, () => new Array(size).fill(false));
+
+  const setFunc = (r, c, val) => {
+    if (r >= 0 && r < size && c >= 0 && c < size) {
+      matrix[r][c] = Boolean(val);
+      isFunc[r][c] = true;
+    }
+  };
+
+  const drawFinder = (r0, c0) => {
+    for (let dr = -1; dr <= 7; dr++) {
+      for (let dc = -1; dc <= 7; dc++) {
+        const inSquare = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+        const isBorder = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+        const isInner = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+        setFunc(r0 + dr, c0 + dc, inSquare && (isBorder || isInner));
+      }
+    }
+  };
+
+  drawFinder(0, 0);
+  drawFinder(0, 14);
+  drawFinder(14, 0);
+
+  for (let i = 8; i <= 12; i++) {
+    setFunc(6, i, i % 2 === 0);
+    setFunc(i, 6, i % 2 === 0);
+  }
+
+  const fmtBits = 0x5412;
+  const getFmtBit = (i) => ((fmtBits >> i) & 1) !== 0;
+
+  for (let i = 0; i <= 5; i++) setFunc(i, 8, getFmtBit(i));
+  setFunc(7, 8, getFmtBit(6));
+  setFunc(8, 8, getFmtBit(7));
+  setFunc(8, 7, getFmtBit(8));
+  for (let i = 9; i < 15; i++) setFunc(8, 14 - i, getFmtBit(i));
+
+  for (let i = 0; i < 8; i++) setFunc(8, size - 1 - i, getFmtBit(i));
+  for (let i = 8; i < 15; i++) setFunc(size - 15 + i, 8, getFmtBit(i));
+
+  setFunc(13, 8, true);
+
+  let bitIdx = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) {
+      for (let j = 0; j < 2; j++) {
+        const c = right - j;
+        const upward = ((right + 1) & 2) === 0;
+        const r = upward ? size - 1 - vert : vert;
+        if (!isFunc[r][c]) {
+          const bit = ((codewords[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1) !== 0;
+          matrix[r][c] = bit !== ((r + c) % 2 === 0);
+          bitIdx++;
+        }
+      }
+    }
+  }
+
+  let pathData = "";
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (matrix[r][c]) {
+        pathData += `M${c + 1},${r + 1}h1v1h-1z`;
+      }
+    }
+  }
+
+  return `<svg viewBox="0 0 ${size + 2} ${size + 2}" width="100%" height="100%" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#fff"/><path d="${pathData}" fill="#000"/></svg>`;
+}
+
 function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmount = 0, discount = 0, total, method, received = null, clientName = null }) {
   const fmtMoney = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
   const troco = method === "Dinheiro" && received !== null ? Math.max(received - total, 0) : 0;
@@ -595,6 +733,7 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   const dataFormatada = dataObj.toLocaleDateString("pt-BR");
   const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const codigoCurto = String(vendaId).slice(-8).toUpperCase();
+  const qrCodeSvg = gerarQRCodeSVG(codigoCurto);
 
   const linhasHtml = (items || [])
     .map((p) => {
@@ -639,6 +778,23 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       -webkit-print-color-adjust: exact;
     }
     .ticket { width: 100%; padding: 2mm 6.5mm 4mm 6.5mm; }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 2mm;
+      width: 100%;
+    }
+    .header-info {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+    }
+    .header-qr {
+      width: 15.5mm;
+      height: 15.5mm;
+      flex-shrink: 0;
+    }
     .center { text-align: center; }
     .bold { font-weight: 700; }
     .title { font-size: 8.5px; font-weight: 700; line-height: 1.15; }
@@ -658,12 +814,16 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
 </head>
 <body>
   <div class="ticket">
-    <div class="center">
-      <div class="title">Esquina dos Doces</div>
-      <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
-      <div class="divider"></div>
-      <div class="subtitle">#${codigoCurto} - ${dataFormatada} ${horaFormatada}</div>
-      ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
+    <div class="header-top">
+      <div class="header-info">
+        <div class="title">PEDRO HENRIQUE L. DE OLIVEIRA</div>
+        <div class="subtitle">CNPJ: 50.509.556/0001-86</div>
+        <div class="bold" style="margin-top: 2px;">CUPOM NÃO FISCAL</div>
+        <div class="subtitle">Venda #${codigoCurto}</div>
+        <div class="subtitle">${dataFormatada} ${horaFormatada}</div>
+        ${clientName ? `<div class="subtitle bold" style="margin-top: 1.5px;">Cliente: ${escapeHtml(clientName)}</div>` : ""}
+      </div>
+      <div class="header-qr">${qrCodeSvg}</div>
     </div>
     <div class="divider"></div>
     <div class="row header-cols"><span>ITEM / QTD x UNIT</span><span>TOTAL</span></div>
