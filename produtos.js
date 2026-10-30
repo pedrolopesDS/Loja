@@ -138,7 +138,7 @@ function formatBarcodeInput(value) {
   if (!digits) return "";
   if (digits.length <= 1) return digits;
   if (digits.length <= 7) return `${digits.slice(0, 1)} ${digits.slice(1)}`;
-  return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 13)}`;
+  return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 14)}`;
 }
 
 // ==========================================
