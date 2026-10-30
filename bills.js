@@ -36,13 +36,12 @@ function renderNav() {
 }
 
 // ==========================================
-// BARRA DE PESQUISA POR CÓDIGO DA NOTINHA
+// BARRA DE PESQUISA E LEITOR DE QR CODE DA NOTINHA
 // ==========================================
 function initSearchToolbar() {
   const panel = $("bills-container");
   if (!panel) return;
 
-  // Cria a barra de pesquisa igual à de produtos.html caso ainda não exista no HTML
   if (!$("search")) {
     const toolbar = document.createElement("div");
     toolbar.className = "admin-toolbar";
@@ -50,7 +49,7 @@ function initSearchToolbar() {
     toolbar.innerHTML = `
       <label class="search-wrap" aria-label="Pesquisar notinha pelo código" style="flex: 1; width: auto;">
         <span class="search-icon" id="search-icon">${icon("search", 17, 1.7)}</span>
-        <input id="search" type="search" placeholder="Buscar notinha pelo código (ex: 8C4F6AD2)" autocomplete="off" />
+        <input id="search" type="search" placeholder="Buscar ou bipar QR Code da notinha (ex: 8C4F6AD2)" autocomplete="off" />
         <button id="clear" class="clear-search hidden" type="button" aria-label="Limpar busca">${icon("x", 14)}</button>
       </label>
     `;
@@ -68,6 +67,13 @@ function initSearchToolbar() {
       searchQuery = e.target.value;
       renderSalesList();
     });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        renderSalesList();
+      }
+    });
   }
 
   if (clearBtn) {
@@ -81,6 +87,46 @@ function initSearchToolbar() {
     });
   }
 }
+
+// Suporte global para bipar o QR Code da notinha em qualquer lugar da tela do Bills
+let qrScannerBuffer = "";
+let qrScannerTimer = null;
+
+document.addEventListener("keydown", (e) => {
+  const activeId = document.activeElement ? document.activeElement.id : "";
+  if (activeId === "search") return;
+
+  if (["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "Unidentified"].includes(e.key)) {
+    return;
+  }
+
+  if (e.key === "Enter" || e.key === "Tab") {
+    const scannedCode = qrScannerBuffer.trim().replace(/^#/, "");
+    if (scannedCode.length >= 4) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      searchQuery = scannedCode;
+      if ($("search")) {
+        $("search").value = scannedCode;
+      }
+      renderSalesList();
+    }
+    qrScannerBuffer = "";
+    clearTimeout(qrScannerTimer);
+    return;
+  }
+
+  if (/^[0-9a-zA-Z#]$/.test(e.key)) {
+    qrScannerBuffer += e.key;
+    clearTimeout(qrScannerTimer);
+    qrScannerTimer = setTimeout(() => {
+      qrScannerBuffer = "";
+    }, 200);
+  } else {
+    qrScannerBuffer = "";
+  }
+}, true);
 
 // ==========================================
 // IMPRIMIR NOTINHA TÉRMICA 58mm DA VENDA
@@ -338,7 +384,6 @@ function renderSalesList() {
     return;
   }
 
-  // Remove espaços e o caractere '#' caso o operador digite "#8C4F6AD2"
   const termo = searchQuery.trim().replace(/^#/, "").toLowerCase();
 
   const visibleSales = cachedSales.filter((sale) => {
@@ -440,7 +485,6 @@ async function renderBills() {
   }
 }
 
-// Delegação de eventos para Imprimir Notinha, Fatura PDF e Excluir venda
 $("bills-container").addEventListener("click", (e) => {
   const printBtn = e.target.closest("[data-print-sale]");
   if (printBtn) {
