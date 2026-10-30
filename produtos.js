@@ -134,11 +134,11 @@ function formatCurrencyInput(value) {
 }
 
 function formatBarcodeInput(value) {
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 14);
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 13);
   if (!digits) return "";
   if (digits.length <= 1) return digits;
   if (digits.length <= 7) return `${digits.slice(0, 1)} ${digits.slice(1)}`;
-  return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 14)}`;
+  return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 13)}`;
 }
 
 // ==========================================
