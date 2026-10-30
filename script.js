@@ -3,8 +3,8 @@
 // ==========================================
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -113,7 +113,6 @@ async function saveCompletedSale(method, received) {
     troco: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
   };
 
-  // Congela a quantidade de cada item antes de limpar o carrinho
   const itemsParaImpressao = items.map(product => {
     const qty = product.isCustom ? 1 : state.cart[product.id];
     return {
@@ -787,7 +786,6 @@ payBody.addEventListener("click", async (e) => {
       return;
     }
     
-    // Limpa imediatamente o carrinho, desconto e valor avulso após concluir a venda
     state.cart = {};
     state.cartOrder = [];
     state.discount = 0;
@@ -800,7 +798,6 @@ payBody.addEventListener("click", async (e) => {
     closePayment();
     renderCart();
 
-    // Esconde a mensagem "Venda Finalizada!" automaticamente após 3 segundos
     if (clearSuccessTimer) clearTimeout(clearSuccessTimer);
     clearSuccessTimer = setTimeout(() => {
       state.placed = false;
@@ -818,7 +815,7 @@ window.addEventListener("storage", (e) => {
 });
 
 // ==========================================
-// SUPORTE GLOBAL PARA LEITOR DE CÓDIGO DE BARRAS
+// SUPORTE GLOBAL PARA LEITOR DE CÓDIGO DE BARRAS E QR CODE DE NOTINHA
 // ==========================================
 let barcodeBuffer = "";
 let barcodeTimer = null;
@@ -861,6 +858,11 @@ document.addEventListener("keydown", (e) => {
           renderProducts();
           $("search").blur();
         }
+      } else if (/^#?[0-9a-fA-F]{8}$/.test(code)) {
+        // Se for um código de notinha (8 caracteres hexadecimais do QR Code), redireciona para o Bills
+        const billCode = code.replace(/^#/, "").toUpperCase();
+        sessionStorage.setItem("pdv:searchBillCode", billCode);
+        window.location.href = `bills.html?code=${encodeURIComponent(billCode)}`;
       } else {
         alert("Produto não encontrado: " + code);
       }
@@ -875,7 +877,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (/^[0-9a-zA-Z]$/.test(e.key)) {
+  if (/^[0-9a-zA-Z#]$/.test(e.key)) {
     barcodeBuffer += e.key;
 
     clearTimeout(barcodeTimer);
