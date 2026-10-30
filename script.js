@@ -3,8 +3,8 @@
 // ==========================================
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -38,6 +38,8 @@ const state = {
   cart: {}, 
   cartOrder: [],
 };
+
+let clearSuccessTimer = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -94,7 +96,6 @@ function formatCurrencyInput(value) {
 // ==========================================
 
 async function saveCompletedSale(method, received) {
-  if (state.placed) return false;
   const { items, subtotal, customAmount, grossTotal, discount, total } = getTotals();
   if (!items.length || !method) return false;
   
@@ -112,17 +113,23 @@ async function saveCompletedSale(method, received) {
     troco: method === "Dinheiro" ? roundMoney(Math.max(received - total, 0)) : null
   };
 
-  const itemsData = items.map(product => {
+  // Congela a quantidade de cada item antes de limpar o carrinho
+  const itemsParaImpressao = items.map(product => {
     const qty = product.isCustom ? 1 : state.cart[product.id];
     return {
-      id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
-      produto_id: product.isCustom ? null : product.id,
-      nome_produto: product.name,
-      quantidade: qty,
-      preco_unitario: roundMoney(product.price),
-      total: roundMoney(product.price * qty)
+      ...product,
+      quantity: qty
     };
   });
+
+  const itemsData = itemsParaImpressao.map(product => ({
+    id: window.crypto ? window.crypto.randomUUID() : generateUUID(),
+    produto_id: product.isCustom ? null : product.id,
+    nome_produto: product.name,
+    quantidade: product.quantity,
+    preco_unitario: roundMoney(product.price),
+    total: roundMoney(product.price * product.quantity)
+  }));
   
   try {
     const { error } = await supabaseClient.rpc('sincronizar_venda_offline', {
@@ -135,7 +142,7 @@ async function saveCompletedSale(method, received) {
     imprimirNotinhaTermica({
       vendaId,
       dataVenda: agora,
-      items,
+      items: itemsParaImpressao,
       subtotal,
       customAmount,
       discount,
@@ -189,7 +196,6 @@ function renderCategories() {
   $("categories").innerHTML = btnTodas + btnCategorias;
 }
 
-// Filtra e ordena instantaneamente na memória (NÃO faz requisição ao banco a cada clique)
 function renderProducts() {
   $("clear").classList.toggle("hidden", !state.query);
   const q = state.query.trim().toLowerCase();
@@ -214,7 +220,6 @@ function renderProducts() {
     </button>`).join("") : `<p class="empty-products">Nenhum item encontrado nesta pesquisa.</p>`;
 }
 
-// Carrega do cache imediatamente e sincroniza com o Supabase em segundo plano
 async function loadProductsFromDB() {
   if (!products.length) {
     $("products").innerHTML = '<p class="empty-products">A carregar produtos...</p>';
@@ -281,8 +286,8 @@ function renderCart() {
   $("success").textContent = `Venda Finalizada!${state.paymentDetail ? ` — ${state.paymentDetail}` : ""}`;
   $("success").classList.toggle("hidden", !state.placed);
   
-  $("charge").textContent = state.placed ? "Venda Finalizada!" : `Finalizar ${money(total)}`;
-  $("charge").disabled = !count || state.placed;
+  $("charge").textContent = `Finalizar ${money(total)}`;
+  $("charge").disabled = !count;
   
   $("order-panel").classList.toggle("mobile-cart-open", state.mobileCart);
   $("mobile-trigger").innerHTML = `${icon("bag", 18)} Pedido (${count}) · ${money(total)} ${icon(state.mobileCart ? "x" : "menu", 16)}`;
@@ -311,12 +316,9 @@ function renderAll() {
 // ==========================================
 
 function updateCart(id, amount, fromCartEdit = false) {
-  if (state.placed) {
-    state.cart = {};
-    state.cartOrder = [];
-    state.discount = 0;
-    state.customAmount = 0;
-    state.editing = false;
+  if (clearSuccessTimer) {
+    clearTimeout(clearSuccessTimer);
+    clearSuccessTimer = null;
   }
 
   if (id === CUSTOM_ITEM_ID && amount < 0) {
@@ -612,15 +614,13 @@ $("custom-amount-remove").addEventListener("click", () => {
 });
 
 function aplicarValorAvulso() {
-  if (state.placed) {
-    state.cart = {};
-    state.cartOrder = [];
-    state.discount = 0;
-    state.customAmount = 0;
-    state.editing = false;
-    state.placed = false;
-    state.paymentDetail = null;
+  if (clearSuccessTimer) {
+    clearTimeout(clearSuccessTimer);
+    clearSuccessTimer = null;
   }
+
+  state.placed = false;
+  state.paymentDetail = null;
 
   const inputVal = $("custom-amount-input").value.replace(/\./g, "").replace(",", ".");
   const value = parseFloat(inputVal);
@@ -744,7 +744,8 @@ function renderPayment() {
 }
 
 $("charge").addEventListener("click", () => { 
-  if (!state.placed) {
+  const { items } = getTotals();
+  if (items.length > 0) {
     payStep = { type: "method" };
     renderPayment();
     payModal.classList.remove("hidden");
@@ -766,7 +767,6 @@ payBody.addEventListener("click", async (e) => {
   else if (t.dataset.card) { payStep = { type: "confirm", method: `Cartão (${t.dataset.card})` }; renderPayment(); }
   else if ("payBack" in t.dataset) { payStep = { type: "method" }; renderPayment(); }
   else if (t.id === "pay-finish") {
-    if (state.placed) return;
     const { total, items } = getTotals();
     if (!items.length || !payStep.method) return;
     let detail = payStep.method;
@@ -778,15 +778,35 @@ payBody.addEventListener("click", async (e) => {
       if (!Number.isFinite(received) || received < total) return;
       detail = `Dinheiro · Troco ${money(Math.max(received - total, 0))}`;
     }
+
+    t.disabled = true;
     
     const vendaSalva = await saveCompletedSale(payStep.method, received);
-    if (!vendaSalva) return;
+    if (!vendaSalva) {
+      t.disabled = false;
+      return;
+    }
     
-    state.placed = true;
+    // Limpa imediatamente o carrinho, desconto e valor avulso após concluir a venda
+    state.cart = {};
+    state.cartOrder = [];
+    state.discount = 0;
+    state.customAmount = 0;
+    state.editing = false;
     state.mobileCart = false;
+    state.placed = true;
     state.paymentDetail = detail;
+
     closePayment();
     renderCart();
+
+    // Esconde a mensagem "Venda Finalizada!" automaticamente após 3 segundos
+    if (clearSuccessTimer) clearTimeout(clearSuccessTimer);
+    clearSuccessTimer = setTimeout(() => {
+      state.placed = false;
+      state.paymentDetail = null;
+      renderCart();
+    }, 3000);
   }
 });
 
