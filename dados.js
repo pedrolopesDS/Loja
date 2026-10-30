@@ -1,6 +1,6 @@
 // ==========================================
 // 1. CONFIGURAÇÃO GLOBAL E BANCO DE DADOS (SUPABASE)
-// ==========================================
+// =========================================
 
 const SUPABASE_URL = "https://aykrfzyktixjwplkmmjk.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5a3JmenlrdGl4andwbGttbWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NTQ5OTgsImV4cCI6MjEwNzIzMDk5OH0.BfulX8WR_EXD83-8JPw2HW7TOhAFx-bqIoCMn9FbkdQ";
