@@ -5,12 +5,14 @@
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
-const icon = (name, size = 24, stroke = 1.5) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+const icon = (name, size = 24, stroke = 1.5) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 let cachedSales = [];
 let productsMap = {};
+let searchQuery = "";
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -31,6 +33,53 @@ function renderNav() {
       ${icon(ic)}<span>${name}</span>
     </a>`
   ).join("");
+}
+
+// ==========================================
+// BARRA DE PESQUISA POR CÓDIGO DA NOTINHA
+// ==========================================
+function initSearchToolbar() {
+  const panel = $("bills-container");
+  if (!panel) return;
+
+  // Cria a barra de pesquisa igual à de produtos.html caso ainda não exista no HTML
+  if (!$("search")) {
+    const toolbar = document.createElement("div");
+    toolbar.className = "admin-toolbar";
+    toolbar.style.marginBottom = "18px";
+    toolbar.innerHTML = `
+      <label class="search-wrap" aria-label="Pesquisar notinha pelo código" style="flex: 1; width: auto;">
+        <span class="search-icon" id="search-icon">${icon("search", 17, 1.7)}</span>
+        <input id="search" type="search" placeholder="Buscar notinha pelo código (ex: 8C4F6AD2)" autocomplete="off" />
+        <button id="clear" class="clear-search hidden" type="button" aria-label="Limpar busca">${icon("x", 14)}</button>
+      </label>
+    `;
+    panel.parentNode.insertBefore(toolbar, panel);
+  } else {
+    if ($("search-icon")) $("search-icon").innerHTML = icon("search", 17, 1.7);
+    if ($("clear")) $("clear").innerHTML = icon("x", 14);
+  }
+
+  const searchInput = $("search");
+  const clearBtn = $("clear");
+
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      searchQuery = e.target.value;
+      renderSalesList();
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      searchQuery = "";
+      if (searchInput) {
+        searchInput.value = "";
+        searchInput.focus();
+      }
+      renderSalesList();
+    });
+  }
 }
 
 // ==========================================
@@ -222,7 +271,7 @@ async function gerarFaturaVendaPDF(saleId, botao) {
     const paginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= paginas; i++) {
       doc.setPage(i);
-      texto("50.509.556/0001-86 - Esquina dos Doces", margem, altura - 12, 8, false, 140);
+      texto("50.509.556/0001-86 - 50.509.556 Pedro Henrique Lopes de Oliveira", margem, altura - 12, 8, false, 140);
       texto(`${i} / ${paginas}`, direita, altura - 12, 8, false, 140, "right");
     }
     doc.save(`fatura-${numero.toLowerCase()}.pdf`);
@@ -274,7 +323,79 @@ async function deleteSale(saleId, buttonEl) {
 }
 
 // ==========================================
-// CARREGAR E RENDERIZAR AS VENDAS
+// FILTRAR E RENDERIZAR AS VENDAS NA TELA
+// ==========================================
+function renderSalesList() {
+  const panel = $("bills-container");
+  if (!panel) return;
+
+  if ($("clear")) {
+    $("clear").classList.toggle("hidden", !searchQuery);
+  }
+
+  if (cachedSales.length === 0) {
+    panel.innerHTML = '<p class="bills-empty">Nenhuma venda finalizada ainda.</p>';
+    return;
+  }
+
+  // Remove espaços e o caractere '#' caso o operador digite "#8C4F6AD2"
+  const termo = searchQuery.trim().replace(/^#/, "").toLowerCase();
+
+  const visibleSales = cachedSales.filter((sale) => {
+    if (!termo) return true;
+    const codigoCurto = String(sale.id).slice(-8).toLowerCase();
+    const idCompleto = String(sale.id).toLowerCase();
+    return codigoCurto.includes(termo) || idCompleto.includes(termo);
+  });
+
+  if (visibleSales.length === 0) {
+    panel.innerHTML = `<p class="bills-empty">Nenhuma notinha encontrada para o código "<strong>#${escapeHtml(searchQuery.trim().replace(/^#/, "").toUpperCase())}</strong>".</p>`;
+    return;
+  }
+
+  const totalGeral = roundMoney(visibleSales.reduce((sum, sale) => sum + sale.total, 0));
+  const abrirAutomaticamente = Boolean(termo && visibleSales.length === 1);
+
+  panel.innerHTML = `
+    <div class="section-heading">
+      <h2>Vendas realizadas</h2>
+      <span class="bills-count">${visibleSales.length} venda${visibleSales.length === 1 ? "" : "s"} · ${money(totalGeral)}</span>
+    </div>
+    ${visibleSales.map((sale) => {
+      const codigoNotinha = String(sale.id).slice(-8).toUpperCase();
+      return `
+      <details class="bill-record" ${abrirAutomaticamente ? "open" : ""}>
+        <summary>
+          <span class="bill-date"><strong>${escapeHtml(new Date(sale.date).toLocaleString("pt-BR"))}</strong><small>Venda #${escapeHtml(codigoNotinha)}</small></span>
+          <span class="bill-method">${escapeHtml(sale.payment)}</span>
+          <strong class="bill-total">${money(sale.total)}</strong>
+          <span class="bill-chevron">${icon("chevron", 16)}</span>
+        </summary>
+        <div class="bill-detail">
+          <div class="bill-table-wrap"><table class="bill-table">
+            <thead><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr></thead>
+            <tbody>${sale.items.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.quantity}</td><td>${money(item.price)}</td><td>${money(item.total)}</td></tr>`).join("")}</tbody>
+          </table></div>
+          <div class="bill-totals"><div><span>Subtotal</span><strong>${money(sale.subtotal)}</strong></div><div><span>Desconto</span><strong>${money(sale.discount)}</strong></div><div><span>Total pago</span><strong>${money(sale.total)}</strong></div>${sale.payment === "Dinheiro" ? `<div><span>Valor recebido</span><strong>${money(sale.received)}</strong></div><div><span>Troco</span><strong>${money(sale.change)}</strong></div>` : ""}</div>
+          <div class="bill-actions">
+            <button type="button" class="icon-btn edit-button" data-print-sale="${escapeHtml(sale.id)}" title="Imprimir Notinha Térmica (58mm)">
+              ${icon("printer", 17)}
+            </button>
+            <button type="button" class="icon-btn edit-button" data-invoice-sale="${escapeHtml(sale.id)}" title="Fatura / Recibo (PDF)">
+              ${icon("invoice", 17)}
+            </button>
+            <button type="button" class="bill-delete-btn" data-delete-sale="${escapeHtml(sale.id)}" title="Excluir esta venda">
+              ${icon("trash", 15)}
+              <span>Excluir venda</span>
+            </button>
+          </div>
+        </div>
+      </details>`;
+    }).join("")}`;
+}
+
+// ==========================================
+// CARREGAR VENDAS DO SUPABASE
 // ==========================================
 async function renderBills() {
   const panel = $("bills-container");
@@ -312,44 +433,7 @@ async function renderBills() {
     }));
 
     cachedSales = sales;
-
-    if (sales.length === 0) {
-      panel.innerHTML = '<p class="bills-empty">Nenhuma venda finalizada ainda.</p>';
-      return;
-    }
-
-    const totalGeral = roundMoney(sales.reduce((sum, sale) => sum + sale.total, 0));
-    
-    panel.innerHTML = `
-      <div class="section-heading"><h2>Vendas realizadas</h2><span class="bills-count">${sales.length} venda${sales.length === 1 ? "" : "s"} · ${money(totalGeral)}</span></div>
-      ${sales.map((sale) => `
-        <details class="bill-record">
-          <summary>
-            <span class="bill-date"><strong>${escapeHtml(new Date(sale.date).toLocaleString("pt-BR"))}</strong><small>Venda #${escapeHtml(sale.id.slice(-8))}</small></span>
-            <span class="bill-method">${escapeHtml(sale.payment)}</span>
-            <strong class="bill-total">${money(sale.total)}</strong>
-            <span class="bill-chevron">${icon("chevron", 16)}</span>
-          </summary>
-          <div class="bill-detail">
-            <div class="bill-table-wrap"><table class="bill-table">
-              <thead><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr></thead>
-              <tbody>${sale.items.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.quantity}</td><td>${money(item.price)}</td><td>${money(item.total)}</td></tr>`).join("")}</tbody>
-            </table></div>
-            <div class="bill-totals"><div><span>Subtotal</span><strong>${money(sale.subtotal)}</strong></div><div><span>Desconto</span><strong>${money(sale.discount)}</strong></div><div><span>Total pago</span><strong>${money(sale.total)}</strong></div>${sale.payment === "Dinheiro" ? `<div><span>Valor recebido</span><strong>${money(sale.received)}</strong></div><div><span>Troco</span><strong>${money(sale.change)}</strong></div>` : ""}</div>
-            <div class="bill-actions">
-              <button type="button" class="icon-btn edit-button" data-print-sale="${escapeHtml(sale.id)}" title="Imprimir Notinha Térmica (58mm)">
-                ${icon("printer", 17)}
-              </button>
-              <button type="button" class="icon-btn edit-button" data-invoice-sale="${escapeHtml(sale.id)}" title="Fatura / Recibo (PDF)">
-                ${icon("invoice", 17)}
-              </button>
-              <button type="button" class="bill-delete-btn" data-delete-sale="${escapeHtml(sale.id)}" title="Excluir esta venda">
-                ${icon("trash", 15)}
-                <span>Excluir venda</span>
-              </button>
-            </div>
-          </div>
-        </details>`).join("")}`;
+    renderSalesList();
   } catch (error) {
     console.error("Erro ao carregar as vendas do Supabase:", error);
     panel.innerHTML = '<p class="bills-empty" role="alert">Não foi possível ler o histórico de vendas. Verifique a sua ligação ao banco de dados.</p>';
@@ -379,4 +463,5 @@ $("bills-container").addEventListener("click", (e) => {
 $("logout").innerHTML = `${icon("logout")}<span>Sair</span>`;
 
 renderNav();
+initSearchToolbar();
 renderBills();
