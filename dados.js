@@ -1,6 +1,6 @@
 // ==========================================
 // 1. CONFIGURAÇÃO GLOBAL E BANCO DE DADOS (SUPABASE)
-// =========================================
+// ==========================================
 
 const SUPABASE_URL = "https://aykrfzyktixjwplkmmjk.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5a3JmenlrdGl4andwbGttbWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NTQ5OTgsImV4cCI6MjEwNzIzMDk5OH0.BfulX8WR_EXD83-8JPw2HW7TOhAFx-bqIoCMn9FbkdQ";
@@ -791,14 +791,14 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       background: #fff;
       color: #000;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 9px;
+      font-size: 8.5px;
       line-height: 1.25;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
     .ticket {
       width: 100%;
-      padding: 2mm 4.5mm 4mm 4.5mm;
+      padding: 2mm 6.5mm 4mm 6.5mm;
     }
     .header-top {
       display: table;
@@ -816,20 +816,20 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
     .header-qr-cell {
       display: table-cell;
       vertical-align: top;
-      width: 12.5mm;
+      width: 12mm;
       text-align: right;
     }
     .header-qr {
       display: block;
-      width: 12.5mm;
-      height: 12.5mm;
+      width: 12mm;
+      height: 12mm;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
     .center { text-align: center; }
     .bold { font-weight: 700; }
-    .title { font-size: 10px; font-weight: 700; line-height: 1.15; }
-    .subtitle { font-size: 8px; line-height: 1.25; }
+    .title { font-size: 9.5px; font-weight: 700; line-height: 1.15; }
+    .subtitle { font-size: 7.5px; line-height: 1.25; }
     .divider {
       border-top: 1px dashed #000;
       margin: 3px 0;
@@ -847,7 +847,7 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       flex-shrink: 0;
     }
     .header-cols {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       margin-bottom: 2px;
     }
@@ -858,13 +858,13 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
     }
     .item-name {
       font-weight: 700;
-      font-size: 9px;
+      font-size: 8.5px;
       line-height: 1.2;
       word-wrap: break-word;
       overflow-wrap: anywhere;
     }
     .item-values {
-      font-size: 8.5px;
+      font-size: 8px;
       line-height: 1.2;
     }
     .totals-section, .payment-section {
@@ -872,17 +872,17 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
       break-inside: avoid;
     }
     .totals-row {
-      font-size: 8.5px;
+      font-size: 8px;
       padding: 0.5px 0;
     }
     .total-final {
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 700;
       padding-top: 1.5px;
     }
     .footer {
       margin-top: 4px;
-      font-size: 8px;
+      font-size: 7.5px;
       text-align: center;
     }
   </style>
