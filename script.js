@@ -1,10 +1,13 @@
 // ==========================================
 // FRENTE DE CAIXA (INTEGRADA AO SUPABASE)
-// =========================================
+// ==========================================
+
+const CLOUD_NAME = "dh548byjf";
+const UPLOAD_PRESET = "pdv_uploads";
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -40,6 +43,8 @@ const state = {
 };
 
 let clearSuccessTimer = null;
+let quickPhotoData = "";
+let quickSelectedFile = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -89,6 +94,300 @@ function formatCurrencyInput(value) {
   v = v.replace(".", ","); 
   v = v.replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1."); 
   return v;
+}
+
+function formatBarcodeInput(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 13);
+  if (!digits) return "";
+  if (digits.length <= 1) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 1)} ${digits.slice(1)}`;
+  return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 13)}`;
+}
+
+async function uploadToCloudinary(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", UPLOAD_PRESET);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+    method: "POST",
+    body: formData
+  });
+
+  if (!response.ok) {
+    throw new Error("Falha ao enviar a imagem para o Cloudinary.");
+  }
+
+  const data = await response.json();
+  return data.secure_url;
+}
+
+// ==========================================
+// MODAL DE CADASTRO RÁPIDO DE PRODUTO NO CAIXA
+// ==========================================
+function garantirModalCadastroRapido() {
+  if ($("form-modal")) return;
+
+  const modal = document.createElement("div");
+  modal.id = "form-modal";
+  modal.className = "modal-backdrop hidden";
+  modal.innerHTML = `
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="form-title" style="max-width: 440px; width: 100%; display: flex; flex-direction: column; gap: 14px;">
+      <h3 id="form-title">Novo Produto</h3>
+
+      <div class="form-field">
+        <label for="p-name">Nome</label>
+        <div class="modal-input-wrap">
+          <input id="p-name" type="text" placeholder="Ex.: Bala de Goma" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="p-price">Preço</label>
+        <div class="modal-input-wrap">
+          <span>R$</span>
+          <input id="p-price" type="text" inputmode="numeric" placeholder="0,00" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label>Foto do produto</label>
+        <div class="photo-picker">
+          <button type="button" id="photo-preview" class="photo-picker-thumb thumb-media" title="Escolher foto do produto"></button>
+          <div class="photo-picker-actions">
+            <button type="button" id="photo-pick" class="discount-remove">Adicionar foto</button>
+            <button type="button" id="photo-remove" class="discount-remove hidden">Remover foto</button>
+            <small style="color: var(--muted-foreground); font-size: 11px; line-height: 1.3;">Clique na imagem para escolher do seu dispositivo</small>
+          </div>
+          <input id="p-photo" type="file" accept="image/*" class="hidden" />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="p-category">Categoria</label>
+        <div class="custom-select-wrapper" id="cat-wrapper" style="width: 100%;">
+          <div class="custom-select-trigger" id="cat-trigger" style="width: 100%; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface);">
+            <input id="p-category" type="text" value="${escapeHtml(categories[0][0])}" readonly style="cursor: pointer; width: 100%; border: 0; outline: none; background: transparent; font-family: inherit; font-size: 14px;" />
+            <span class="select-chevron" id="cat-chevron">${icon("chevron", 14)}</span>
+          </div>
+          <div class="custom-select-options hidden" id="cat-options" style="width: 100%;">
+            ${categories.map(([name], idx) => `<div class="custom-select-option ${idx === 0 ? "selected" : ""}" data-val="${escapeHtml(name)}">${escapeHtml(name)}</div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="p-barcode">Código de barras</label>
+        <div class="modal-input-wrap">
+          <input id="p-barcode" type="text" inputmode="numeric" placeholder="Somente números" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="p-badge">Selo de destaque (opcional)</label>
+        <div class="modal-input-wrap">
+          <input id="p-badge" type="text" placeholder="Ex.: Novo" autocomplete="off" />
+        </div>
+      </div>
+
+      <p id="form-error" class="hidden" style="color: #e11d48; font-size: 12px; margin: 0;"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="form-cancel" class="modal-cancel">Cancelar</button>
+        <button type="button" id="form-save" class="modal-apply">Cadastrar</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const atualizarFotoPreview = () => {
+    const fallbackIcon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted-foreground);">${paths.box}</svg>`;
+    $("photo-preview").innerHTML = quickPhotoData ? `<img src="${quickPhotoData}" alt="Preview">` : fallbackIcon;
+    $("photo-pick").classList.toggle("hidden", Boolean(quickPhotoData));
+    $("photo-remove").classList.toggle("hidden", !quickPhotoData);
+  };
+
+  modal._atualizarFotoPreview = atualizarFotoPreview;
+
+  $("photo-preview").addEventListener("click", () => $("p-photo").click());
+  $("photo-pick").addEventListener("click", () => $("p-photo").click());
+
+  $("p-photo").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    quickSelectedFile = file;
+    const reader = new FileReader();
+    reader.onload = () => {
+      quickPhotoData = String(reader.result || "");
+      atualizarFotoPreview();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  $("photo-remove").addEventListener("click", () => {
+    quickPhotoData = "";
+    quickSelectedFile = null;
+    $("p-photo").value = "";
+    atualizarFotoPreview();
+  });
+
+  $("p-price").addEventListener("input", (e) => {
+    e.target.value = formatCurrencyInput(e.target.value);
+  });
+
+  $("p-barcode").addEventListener("input", (e) => {
+    e.target.value = formatBarcodeInput(e.target.value);
+  });
+
+  $("cat-trigger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("cat-options").classList.toggle("hidden");
+  });
+
+  $("cat-options").addEventListener("click", (e) => {
+    const opt = e.target.closest(".custom-select-option");
+    if (!opt) return;
+    const val = opt.dataset.val;
+    $("p-category").value = val;
+    document.querySelectorAll("#cat-options .custom-select-option").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.val === val);
+    });
+    $("cat-options").classList.add("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#cat-wrapper") && $("cat-options")) {
+      $("cat-options").classList.add("hidden");
+    }
+  });
+
+  $("form-cancel").addEventListener("click", fecharModalCadastroRapido);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) fecharModalCadastroRapido();
+  });
+
+  $("form-save").addEventListener("click", salvarCadastroRapido);
+
+  ["p-name", "p-price", "p-barcode", "p-badge"].forEach((id) => {
+    $(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        salvarCadastroRapido();
+      }
+    });
+  });
+}
+
+function abrirModalCadastroRapido(codigoBarras = "") {
+  garantirModalCadastroRapido();
+
+  quickPhotoData = "";
+  quickSelectedFile = null;
+
+  const catPadrao = state.category !== "Todas" ? state.category : categories[0][0];
+
+  $("form-title").textContent = "Novo Produto";
+  $("form-save").textContent = "Cadastrar";
+  $("p-name").value = "";
+  $("p-price").value = "";
+  $("p-category").value = catPadrao;
+  document.querySelectorAll("#cat-options .custom-select-option").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.val === catPadrao);
+  });
+  $("p-barcode").value = formatBarcodeInput(codigoBarras);
+  $("p-badge").value = "";
+  $("p-photo").value = "";
+  $("form-error").classList.add("hidden");
+
+  if ($("form-modal")._atualizarFotoPreview) {
+    $("form-modal")._atualizarFotoPreview();
+  }
+
+  $("form-modal").classList.remove("hidden");
+  setTimeout(() => $("p-name").focus(), 20);
+}
+
+function fecharModalCadastroRapido() {
+  if ($("form-modal")) {
+    $("form-modal").classList.add("hidden");
+  }
+  quickPhotoData = "";
+  quickSelectedFile = null;
+}
+
+async function salvarCadastroRapido() {
+  const name = $("p-name").value.trim();
+  const rawPrice = $("p-price").value.replace(/\./g, "").replace(",", ".");
+  const price = parseFloat(rawPrice);
+  const category = $("p-category").value || categories[0][0];
+  const barcode = $("p-barcode").value.replace(/\D/g, "");
+  const badge = $("p-badge").value.trim();
+
+  const showError = (msg) => {
+    const errEl = $("form-error");
+    errEl.textContent = msg;
+    errEl.classList.remove("hidden");
+  };
+
+  if (!name) return showError("Informe o nome do produto.");
+  if (!Number.isFinite(price) || price <= 0) return showError("Informe um preço válido maior que zero.");
+
+  const submitBtn = $("form-save");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Salvando...";
+
+  try {
+    let finalPhotoUrl = quickPhotoData || null;
+    if (quickSelectedFile) {
+      finalPhotoUrl = await uploadToCloudinary(quickSelectedFile);
+    }
+
+    const novoId = window.crypto ? window.crypto.randomUUID() : generateUUID();
+    const payload = {
+      id: novoId,
+      nome: name,
+      preco: roundMoney(price),
+      categoria: category,
+      codigo_barras: barcode || null,
+      foto_url: finalPhotoUrl,
+      badge: badge || null,
+      ativo: true
+    };
+
+    const { error } = await supabaseClient.from("produtos").insert([payload]);
+    if (error) throw error;
+
+    const novoProduto = {
+      id: payload.id,
+      name: payload.nome,
+      price: payload.preco,
+      category: payload.categoria,
+      barcode: payload.codigo_barras,
+      photo: payload.foto_url,
+      badge: payload.badge,
+      active: true
+    };
+
+    products.push(novoProduto);
+
+    try {
+      localStorage.setItem("pdv:produtosCacheV1", JSON.stringify(products));
+      localStorage.setItem("pdv:updateTrigger", Date.now().toString());
+    } catch (_) {}
+
+    fecharModalCadastroRapido();
+    renderProducts();
+
+    // Já adiciona 1 unidade do produto recém-cadastrado ao carrinho atual
+    updateCart(novoProduto.id, 1);
+  } catch (error) {
+    console.error("Erro ao cadastrar produto:", error);
+    showError("Erro ao cadastrar: " + (error.message || "Verifique a consola."));
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Cadastrar";
+  }
 }
 
 // ==========================================
@@ -754,7 +1053,12 @@ $("charge").addEventListener("click", () => {
 const closePayment = () => payModal.classList.add("hidden");
 $("payment-cancel").addEventListener("click", closePayment);
 payModal.addEventListener("click", (e) => { if (e.target === payModal) closePayment(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !payModal.classList.contains("hidden")) closePayment(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (!payModal.classList.contains("hidden")) closePayment();
+    if ($("form-modal") && !$("form-modal").classList.contains("hidden")) fecharModalCadastroRapido();
+  }
+});
 
 payBody.addEventListener("click", async (e) => {
   const t = e.target.closest("button");
@@ -821,6 +1125,11 @@ let barcodeBuffer = "";
 let barcodeTimer = null;
 
 document.addEventListener("keydown", (e) => {
+  // Não intercepta a digitação se o modal de Novo Produto estiver aberto
+  if ($("form-modal") && !$("form-modal").classList.contains("hidden")) {
+    return;
+  }
+
   const activeId = document.activeElement ? document.activeElement.id : "";
   if (
     activeId === "discount-input" ||
@@ -841,6 +1150,13 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       e.stopPropagation();
 
+      if (activeId === "search" || $("search").value) {
+        $("search").value = "";
+        state.query = "";
+        renderProducts();
+        $("search").blur();
+      }
+
       const product = products.find(
         (p) => String(p.barcode || "").trim() === code
       );
@@ -851,20 +1167,14 @@ document.addEventListener("keydown", (e) => {
         const orderPanel = $("order-panel");
         orderPanel.style.transform = "scale(1.02)";
         setTimeout(() => (orderPanel.style.transform = "scale(1)"), 150);
-
-        if (activeId === "search" || $("search").value) {
-          $("search").value = "";
-          state.query = "";
-          renderProducts();
-          $("search").blur();
-        }
       } else if (/^#?[0-9a-fA-F]{8}$/.test(code)) {
         // Se for um código de notinha (8 caracteres hexadecimais do QR Code), redireciona para o Bills
         const billCode = code.replace(/^#/, "").toUpperCase();
         sessionStorage.setItem("pdv:searchBillCode", billCode);
         window.location.href = `bills.html?code=${encodeURIComponent(billCode)}`;
       } else {
-        alert("Produto não encontrado: " + code);
+        // Abre automaticamente o pop-up de cadastro com o código de barras preenchido
+        abrirModalCadastroRapido(code);
       }
 
       barcodeBuffer = "";
