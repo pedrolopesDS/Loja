@@ -5,6 +5,8 @@
 const SUPABASE_URL = "https://aykrfzyktixjwplkmmjk.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5a3JmenlrdGl4andwbGttbWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NTQ5OTgsImV4cCI6MjEwNzIzMDk5OH0.BfulX8WR_EXD83-8JPw2HW7TOhAFx-bqIoCMn9FbkdQ";
 
+const PUBLIC_RECEIPT_BASE_URL = "https://pedrolopesds.github.io/Loja/recibo.html";
+
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
@@ -545,7 +547,10 @@ function iniciarMonitorGlobalDePedidos() {
 // ==========================================
 (function protegerRotas() {
   const path = window.location.pathname.toLowerCase();
-  const isPublicPage = path.endsWith("catalogo.html") || path.endsWith("login.html");
+  const isPublicPage =
+    path.endsWith("catalogo.html") ||
+    path.endsWith("login.html") ||
+    path.endsWith("recibo.html");
 
   if (!isPublicPage) {
     document.documentElement.style.visibility = "hidden";
@@ -586,14 +591,21 @@ function iniciarMonitorGlobalDePedidos() {
 })();
 
 // ==========================================
-// 6. GERADOR DE QR CODE BITMAP (PNG) E IMPRESSÃO 58mm
+// 6. GERADOR DE QR CODE BITMAP (SUPORTA URLs COMPLETAS ATÉ 78 CHARS) E IMPRESSÃO 58mm
 // ==========================================
 function gerarQRCodeDataURL(texto) {
-  const str = String(texto || "").trim().slice(0, 14);
+  const str = String(texto || "").trim().slice(0, 78);
   const bytes = [];
   for (let i = 0; i < str.length; i++) {
     bytes.push(str.charCodeAt(i) & 0xff);
   }
+
+  // Escolhe automaticamente Versão 1-M (até 14 chars) ou Versão 4-L (até 78 chars para URLs)
+  const isShort = bytes.length <= 14;
+  const size = isShort ? 21 : 33;
+  const dataCapacity = isShort ? 16 : 80;
+  const ecDegree = isShort ? 10 : 20;
+  const fmtBits = isShort ? 0x5412 : 0x77c4;
 
   const bits = [];
   const pushBits = (val, n) => {
@@ -614,7 +626,7 @@ function gerarQRCodeDataURL(texto) {
   }
 
   let padToggle = true;
-  while (dataBytes.length < 16) {
+  while (dataBytes.length < dataCapacity) {
     dataBytes.push(padToggle ? 0xec : 0x11);
     padToggle = !padToggle;
   }
@@ -628,29 +640,27 @@ function gerarQRCodeDataURL(texto) {
     return z;
   };
 
-  const degree = 10;
-  const divisor = new Array(degree).fill(0);
-  divisor[degree - 1] = 1;
+  const divisor = new Array(ecDegree).fill(0);
+  divisor[ecDegree - 1] = 1;
   let root = 1;
-  for (let i = 0; i < degree; i++) {
-    for (let j = 0; j < degree; j++) {
+  for (let i = 0; i < ecDegree; i++) {
+    for (let j = 0; j < ecDegree; j++) {
       divisor[j] = gfMul(divisor[j], root);
-      if (j + 1 < degree) divisor[j] ^= divisor[j + 1];
+      if (j + 1 < ecDegree) divisor[j] ^= divisor[j + 1];
     }
     root = gfMul(root, 0x02);
   }
 
-  const rem = new Array(degree).fill(0);
+  const rem = new Array(ecDegree).fill(0);
   for (const b of dataBytes) {
     const factor = b ^ rem.shift();
     rem.push(0);
-    for (let j = 0; j < degree; j++) {
+    for (let j = 0; j < ecDegree; j++) {
       rem[j] ^= gfMul(divisor[j], factor);
     }
   }
 
   const codewords = dataBytes.concat(rem);
-  const size = 21;
   const matrix = Array.from({ length: size }, () => new Array(size).fill(false));
   const isFunc = Array.from({ length: size }, () => new Array(size).fill(false));
 
@@ -673,15 +683,23 @@ function gerarQRCodeDataURL(texto) {
   };
 
   drawFinder(0, 0);
-  drawFinder(0, 14);
-  drawFinder(14, 0);
+  drawFinder(0, size - 7);
+  drawFinder(size - 7, 0);
 
-  for (let i = 8; i <= 12; i++) {
-    setFunc(6, i, i % 2 === 0);
-    setFunc(i, 6, i % 2 === 0);
+  if (!isShort) {
+    // Padrão de alinhamento da Versão 4 em (26, 26)
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        setFunc(26 + dr, 26 + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+      }
+    }
   }
 
-  const fmtBits = 0x5412;
+  for (let i = 8; i < size - 8; i++) {
+    if (!isFunc[6][i]) setFunc(6, i, i % 2 === 0);
+    if (!isFunc[i][6]) setFunc(i, 6, i % 2 === 0);
+  }
+
   const getFmtBit = (i) => ((fmtBits >> i) & 1) !== 0;
 
   for (let i = 0; i <= 5; i++) setFunc(i, 8, getFmtBit(i));
@@ -693,9 +711,10 @@ function gerarQRCodeDataURL(texto) {
   for (let i = 0; i < 8; i++) setFunc(8, size - 1 - i, getFmtBit(i));
   for (let i = 8; i < 15; i++) setFunc(size - 15 + i, 8, getFmtBit(i));
 
-  setFunc(13, 8, true);
+  setFunc(size - 8, 8, true);
 
   let bitIdx = 0;
+  const totalBits = codewords.length * 8;
   for (let right = size - 1; right >= 1; right -= 2) {
     if (right === 6) right = 5;
     for (let vert = 0; vert < size; vert++) {
@@ -704,7 +723,10 @@ function gerarQRCodeDataURL(texto) {
         const upward = ((right + 1) & 2) === 0;
         const r = upward ? size - 1 - vert : vert;
         if (!isFunc[r][c]) {
-          const bit = ((codewords[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1) !== 0;
+          const bit =
+            bitIdx < totalBits
+              ? ((codewords[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1) !== 0
+              : false;
           matrix[r][c] = bit !== ((r + c) % 2 === 0);
           bitIdx++;
         }
@@ -742,7 +764,8 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
   const dataFormatada = dataObj.toLocaleDateString("pt-BR");
   const horaFormatada = dataObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const codigoCurto = String(vendaId).slice(-8).toUpperCase();
-  const qrCodeDataUrl = gerarQRCodeDataURL(codigoCurto);
+  const urlReciboPublico = `${PUBLIC_RECEIPT_BASE_URL}?c=${codigoCurto}`;
+  const qrCodeDataUrl = gerarQRCodeDataURL(urlReciboPublico);
 
   const listaItens = items || [];
 
@@ -816,13 +839,13 @@ function imprimirNotinhaTermica({ vendaId, dataVenda, items, subtotal, customAmo
     .header-qr-cell {
       display: table-cell;
       vertical-align: top;
-      width: 12mm;
+      width: 14mm;
       text-align: right;
     }
     .header-qr {
       display: block;
-      width: 12mm;
-      height: 12mm;
+      width: 14mm;
+      height: 14mm;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
