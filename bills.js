@@ -18,6 +18,16 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+function extrairCodigoNotinha(texto) {
+  const raw = String(texto || "").trim();
+  if (!raw) return "";
+  if (/recibo/i.test(raw) || /^https?/i.test(raw)) {
+    const matchHex = raw.match(/([0-9a-fA-F]{8})$/);
+    if (matchHex) return matchHex[1].toUpperCase();
+  }
+  return raw.replace(/^#/, "");
+}
+
 function renderNav() {
   const navigation = [
     ["Home", "bag", "index.html"], 
@@ -62,15 +72,36 @@ function initSearchToolbar() {
   const searchInput = $("search");
   const clearBtn = $("clear");
 
+  // Verifica se veio redirecionado do Caixa após bipar um QR Code de notinha
+  const params = new URLSearchParams(window.location.search);
+  const initialCode = params.get("code") || params.get("c") || sessionStorage.getItem("pdv:searchBillCode");
+  if (initialCode) {
+    searchQuery = extrairCodigoNotinha(initialCode).toUpperCase();
+    sessionStorage.removeItem("pdv:searchBillCode");
+    if (searchInput) {
+      searchInput.value = searchQuery;
+    }
+    if (clearBtn) {
+      clearBtn.classList.toggle("hidden", !searchQuery);
+    }
+  }
+
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
-      searchQuery = e.target.value;
+      const limpo = extrairCodigoNotinha(e.target.value);
+      searchQuery = limpo;
+      if (limpo !== e.target.value && (/recibo/i.test(e.target.value) || /^https?/i.test(e.target.value))) {
+        e.target.value = limpo;
+      }
       renderSalesList();
     });
 
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        const limpo = extrairCodigoNotinha(searchInput.value);
+        searchQuery = limpo;
+        searchInput.value = limpo;
         renderSalesList();
       }
     });
@@ -79,6 +110,9 @@ function initSearchToolbar() {
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
       searchQuery = "";
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
       if (searchInput) {
         searchInput.value = "";
         searchInput.focus();
@@ -88,7 +122,7 @@ function initSearchToolbar() {
   }
 }
 
-// Suporte global para bipar o QR Code da notinha em qualquer lugar da tela do Bills
+// Suporte global para bipar o QR Code da notinha diretamente na tela do Bills
 let qrScannerBuffer = "";
 let qrScannerTimer = null;
 
@@ -101,10 +135,12 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Enter" || e.key === "Tab") {
-    const scannedCode = qrScannerBuffer.trim().replace(/^#/, "");
-    if (scannedCode.length >= 4) {
+    const raw = qrScannerBuffer.trim();
+    if (raw.length >= 4) {
       e.preventDefault();
       e.stopPropagation();
+
+      const scannedCode = extrairCodigoNotinha(raw);
 
       searchQuery = scannedCode;
       if ($("search")) {
@@ -117,7 +153,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (/^[0-9a-zA-Z#]$/.test(e.key)) {
+  if (e.key.length === 1) {
     qrScannerBuffer += e.key;
     clearTimeout(qrScannerTimer);
     qrScannerTimer = setTimeout(() => {
@@ -384,7 +420,7 @@ function renderSalesList() {
     return;
   }
 
-  const termo = searchQuery.trim().replace(/^#/, "").toLowerCase();
+  const termo = extrairCodigoNotinha(searchQuery).toLowerCase();
 
   const visibleSales = cachedSales.filter((sale) => {
     if (!termo) return true;
@@ -394,7 +430,7 @@ function renderSalesList() {
   });
 
   if (visibleSales.length === 0) {
-    panel.innerHTML = `<p class="bills-empty">Nenhuma notinha encontrada para o código "<strong>#${escapeHtml(searchQuery.trim().replace(/^#/, "").toUpperCase())}</strong>".</p>`;
+    panel.innerHTML = `<p class="bills-empty">Nenhuma notinha encontrada para o código "<strong>#${escapeHtml(termo.toUpperCase())}</strong>".</p>`;
     return;
   }
 
