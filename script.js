@@ -6,8 +6,8 @@ const CLOUD_NAME = "dh548byjf";
 const UPLOAD_PRESET = "pdv_uploads";
 
 const catImages = { 
-  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
-  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
+  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
+  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -130,9 +130,9 @@ function garantirModalCadastroRapido() {
 
   const modal = document.createElement("div");
   modal.id = "form-modal";
-  modal.className = "modal-backdrop hidden";
+  modal.className = "modal-overlay hidden";
   modal.innerHTML = `
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="form-title" style="max-width: 440px; width: 100%; display: flex; flex-direction: column; gap: 14px;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="form-title" style="width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; max-height: 92vh; overflow-y: auto;">
       <h3 id="form-title">Novo Produto</h3>
 
       <div class="form-field">
@@ -165,10 +165,10 @@ function garantirModalCadastroRapido() {
 
       <div class="form-field">
         <label for="p-category">Categoria</label>
-        <div class="custom-select-wrapper" id="cat-wrapper" style="width: 100%;">
-          <div class="custom-select-trigger" id="cat-trigger" style="width: 100%; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface);">
+        <div class="custom-select-wrapper" id="cat-wrapper" style="width: 100%; position: relative;">
+          <div class="modal-input-wrap custom-select-trigger" id="cat-trigger" style="width: 100%; justify-content: space-between; cursor: pointer;">
             <input id="p-category" type="text" value="${escapeHtml(categories[0][0])}" readonly style="cursor: pointer; width: 100%; border: 0; outline: none; background: transparent; font-family: inherit; font-size: 14px;" />
-            <span class="select-chevron" id="cat-chevron">${icon("chevron", 14)}</span>
+            <span class="select-chevron" id="cat-chevron" style="display: flex; align-items: center;">${icon("chevron", 14)}</span>
           </div>
           <div class="custom-select-options hidden" id="cat-options" style="width: 100%;">
             ${categories.map(([name], idx) => `<div class="custom-select-option ${idx === 0 ? "selected" : ""}" data-val="${escapeHtml(name)}">${escapeHtml(name)}</div>`).join("")}
@@ -305,7 +305,7 @@ function abrirModalCadastroRapido(codigoBarras = "") {
   }
 
   $("form-modal").classList.remove("hidden");
-  setTimeout(() => $("p-name").focus(), 20);
+  setTimeout(() => $("p-name").focus({ preventScroll: true }), 20);
 }
 
 function fecharModalCadastroRapido() {
@@ -1168,12 +1168,10 @@ document.addEventListener("keydown", (e) => {
         orderPanel.style.transform = "scale(1.02)";
         setTimeout(() => (orderPanel.style.transform = "scale(1)"), 150);
       } else if (/^#?[0-9a-fA-F]{8}$/.test(code)) {
-        // Se for um código de notinha (8 caracteres hexadecimais do QR Code), redireciona para o Bills
         const billCode = code.replace(/^#/, "").toUpperCase();
         sessionStorage.setItem("pdv:searchBillCode", billCode);
         window.location.href = `bills.html?code=${encodeURIComponent(billCode)}`;
       } else {
-        // Abre automaticamente o pop-up de cadastro com o código de barras preenchido
         abrirModalCadastroRapido(code);
       }
 
