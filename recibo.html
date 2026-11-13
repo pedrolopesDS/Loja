@@ -222,4 +222,103 @@
               usados += blocos[fim].step; fim++;
             }
             const alturaLinha = Math.max(23, usados + 10);
-            const centro = y + alturaLinha / 2
+            const centro = y + alturaLinha / 2;
+            if (miniaturas[index]) doc.addImage(miniaturas[index], "JPEG", margem + 1, centro - 7, 14, 14);
+            let baseline = y + (alturaLinha - usados) / 2 + 3;
+            for (let i = offset; i < fim; i++) {
+              const bloco = blocos[i];
+              texto(bloco.text, xNome, baseline, bloco.size, bloco.bold, bloco.color);
+              baseline += bloco.step;
+            }
+            if (offset === 0) {
+              texto(String(p.quantidade), xQtd, centro + 1.5, 10, true, 35, "center");
+              texto(money(p.price), xPreco, centro + 1.5, 10, true, 35, "right");
+              texto(money(p.price * p.quantidade), direita - 3, centro + 1.5, 10, true, 35, "right");
+            }
+            y += alturaLinha;
+            doc.setDrawColor(235, 235, 238); doc.setLineWidth(0.25);
+            doc.line(margem, y, direita, y);
+            offset = fim;
+            if (offset < blocos.length) novaPagina();
+          }
+        });
+
+        const subtotal = parseFloat(sale.subtotal) || 0;
+        const discount = parseFloat(sale.desconto) || 0;
+        const total = parseFloat(sale.total) || 0;
+
+        if (y + (discount > 0 ? 39 : 32) > limite) novaPagina();
+        y += 11;
+        texto("Subtotal", xPreco - 4, y, 10, false, 110, "right");
+        texto(money(subtotal), direita - 3, y, 10, false, 35, "right");
+        if (discount > 0) {
+          y += 7;
+          texto("Desconto", xPreco - 4, y, 10, false, 110, "right");
+          texto(`- ${money(discount)}`, direita - 3, y, 10, false, 35, "right");
+        }
+        y += 11;
+        texto("TOTAL", xPreco - 4, y, 12, true, 35, "right");
+        texto(money(total), direita - 3, y, 12, true, 35, "right");
+
+        const paginas = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= paginas; i++) {
+          doc.setPage(i);
+          texto("50.509.556/0001-86 - 50.509.556 Pedro Henrique Lopes de Oliveira", margem, altura - 12, 8, false, 140);
+          texto(`${i} / ${paginas}`, direita, altura - 12, 8, false, 140, "right");
+        }
+        doc.save(`fatura-${numero.toLowerCase()}.pdf`);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function iniciar() {
+      const params = new URLSearchParams(window.location.search);
+      const codigo = (params.get("c") || params.get("code") || "").trim();
+
+      if (!codigo) {
+        document.getElementById("status-title").textContent = "Código inválido";
+        document.getElementById("status-sub").textContent = "Nenhum código de comprovante foi informado no link.";
+        return;
+      }
+
+      try {
+        const { data, error } = await client.rpc("buscar_recibo_publico", { p_codigo: codigo });
+        if (error) throw error;
+
+        if (!data || !data.id) {
+          document.getElementById("status-title").textContent = "Notinha não encontrada";
+          document.getElementById("status-sub").textContent = `Não encontramos a venda #${codigo.toUpperCase()}.`;
+          return;
+        }
+
+        vendaAtual = data;
+        const numeroCurto = String(data.id).slice(-8).toUpperCase();
+        const box = document.getElementById("summary-box");
+        box.innerHTML = `
+          <div class="receipt-row"><span>Venda</span><strong>#${escapeHtml(numeroCurto)}</strong></div>
+          <div class="receipt-row"><span>Data</span><span>${escapeHtml(new Date(data.data_venda).toLocaleString("pt-BR"))}</span></div>
+          <div class="receipt-row"><span>Pagamento</span><span>${escapeHtml(data.metodo_pagamento)}</span></div>
+          <div class="receipt-row total"><span>Total</span><span>${money(data.total)}</span></div>
+        `;
+        box.classList.remove("hidden");
+
+        const btn = document.getElementById("download-btn");
+        btn.classList.remove("hidden");
+        btn.addEventListener("click", () => gerarPDFCotacao(vendaAtual));
+
+        await gerarPDFCotacao(vendaAtual);
+
+        document.getElementById("status-title").textContent = "Download Concluído!";
+        document.getElementById("status-sub").textContent = `A fatura da venda #${numeroCurto} foi gerada no seu dispositivo.`;
+      } catch (err) {
+        console.error("Erro ao gerar recibo:", err);
+        document.getElementById("status-title").textContent = "Erro ao carregar recibo";
+        document.getElementById("status-sub").textContent = "Tente novamente em alguns instantes.";
+      }
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
