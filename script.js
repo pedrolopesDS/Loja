@@ -6,8 +6,8 @@ const CLOUD_NAME = "dh548byjf";
 const UPLOAD_PRESET = "pdv_uploads";
 
 const catImages = { 
-  Caixaria: "icons/caixaria.svg", Chiclete: "icons/chicletes.svg", 
-  Doces: "icons/doces.svg", Embalagem: "icons/embalagens.svg", Salgadinho: "icons/salgadinho.svg" 
+  Caixaria: "icons/Caixaria.svg", Chiclete: "icons/Chicletes.svg", 
+  Doces: "icons/Doces.svg", Embalagem: "icons/Embalagens.svg", Salgadinho: "icons/Salgadinho.svg" 
 };
 
 const catEmojis = {
@@ -1124,6 +1124,19 @@ window.addEventListener("storage", (e) => {
 let barcodeBuffer = "";
 let barcodeTimer = null;
 
+function extrairCodigoNotinhaDeLeitura(leitura) {
+  const txt = String(leitura || "").trim();
+  // Reconhece o link completo do QR Code (mesmo se o teclado ABNT2 trocar ':' ou '/' ou '?')
+  if (/recibo/i.test(txt) || /^https?/i.test(txt)) {
+    const m = txt.match(/([0-9a-fA-F]{8})$/);
+    if (m) return m[1].toUpperCase();
+  }
+  if (/^#?[0-9a-fA-F]{8}$/.test(txt)) {
+    return txt.replace(/^#/, "").toUpperCase();
+  }
+  return null;
+}
+
 document.addEventListener("keydown", (e) => {
   // Não intercepta a digitação se o modal de Novo Produto estiver aberto
   if ($("form-modal") && !$("form-modal").classList.contains("hidden")) {
@@ -1161,18 +1174,20 @@ document.addEventListener("keydown", (e) => {
         (p) => String(p.barcode || "").trim() === code
       );
 
+      const billCode = !product ? extrairCodigoNotinhaDeLeitura(code) : null;
+
       if (product) {
         updateCart(product.id, 1);
 
         const orderPanel = $("order-panel");
         orderPanel.style.transform = "scale(1.02)";
         setTimeout(() => (orderPanel.style.transform = "scale(1)"), 150);
-      } else if (/^#?[0-9a-fA-F]{8}$/.test(code)) {
-        const billCode = code.replace(/^#/, "").toUpperCase();
+      } else if (billCode) {
         sessionStorage.setItem("pdv:searchBillCode", billCode);
         window.location.href = `bills.html?code=${encodeURIComponent(billCode)}`;
       } else {
-        abrirModalCadastroRapido(code);
+        const apenasDigitos = code.replace(/\D/g, "");
+        abrirModalCadastroRapido(apenasDigitos || code);
       }
 
       barcodeBuffer = "";
@@ -1185,7 +1200,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (/^[0-9a-zA-Z#]$/.test(e.key)) {
+  if (e.key.length === 1) {
     barcodeBuffer += e.key;
 
     clearTimeout(barcodeTimer);
