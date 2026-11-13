@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comprovante de Compra — Esquina dos Doces</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: var(--background, #f8f7f4);
+      color: var(--foreground, #18181b);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .receipt-card {
+      width: min(440px, 100%);
+      background: var(--surface, #ffffff);
+      border-radius: 18px;
+      padding: 26px 24px;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    .receipt-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: oklch(0.62 0.235 14 / 0.12);
+      color: var(--primary, #ea1d63);
+      margin-bottom: 14px;
+    }
+    .receipt-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 6px;
+    }
+    .receipt-sub {
+      font-family: Georgia, serif;
+      font-size: 13px;
+      color: var(--muted-foreground, #71717a);
+      margin: 0 0 20px;
+    }
+    .receipt-summary {
+      text-align: left;
+      background: #f9f9fb;
+      border: 1px solid var(--border, #e4e4e7);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .receipt-row.total {
+      border-top: 1px dashed #d4d4d8;
+      margin-top: 8px;
+      padding-top: 8px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .receipt-btn {
+      width: 100%;
+      height: 46px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--primary, #ea1d63);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .receipt-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt-card">
+    <div class="receipt-badge">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <path d="M14 2v6h6"/>
+        <path d="M15 15H6"/>
+        <path d="M15 19H6"/>
+      </svg>
+    </div>
+    <h1 class="receipt-title" id="status-title">A gerar o seu PDF...</h1>
+    <p class="receipt-sub" id="status-sub">O download da sua notinha começará automaticamente.</p>
+    <div id="summary-box" class="receipt-summary hidden"></div>
+    <button id="download-btn" class="receipt-btn hidden" type="button">Baixar PDF novamente</button>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://aykrfzyktixjwplkmmjk.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5a3JmenlrdGl4andwbGttbWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NTQ5OTgsImV4cCI6MjEwNzIzMDk5OH0.BfulX8WR_EXD83-8JPw2HW7TOhAFx-bqIoCMn9FbkdQ";
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const money = (n) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n) || 0);
+    const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    let vendaAtual = null;
+
+    function carregarMiniaturaPDF(fotoUrl) {
+      return new Promise((resolve) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 144;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        const limpar = () => {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, 144, 144);
+        };
+        const fallback = () => {
+          limpar();
+          ctx.strokeStyle = "#a1a1aa";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(32, 38, 80, 68);
+          ctx.beginPath();
+          ctx.moveTo(32, 38); ctx.lineTo(72, 58); ctx.lineTo(112, 38);
+          ctx.moveTo(72, 58); ctx.lineTo(72, 106); ctx.stroke();
+          resolve(canvas.toDataURL("image/jpeg", 0.9));
+        };
+        if (!fotoUrl) { fallback(); return; }
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        const timeout = setTimeout(() => { img.onload = img.onerror = null; fallback(); }, 8000);
+        img.onerror = () => { clearTimeout(timeout); fallback(); };
+        img.onload = () => {
+          clearTimeout(timeout);
+          try {
+            limpar();
+            const scale = Math.min(128 / img.naturalWidth, 128 / img.naturalHeight);
+            const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+            ctx.drawImage(img, (144 - w) / 2, (144 - h) / 2, w, h);
+            resolve(canvas.toDataURL("image/jpeg", 0.9));
+          } catch (_) {
+            canvas.width = canvas.height = 144;
+            fallback();
+          }
+        };
+        img.src = fotoUrl;
+      });
+    }
+
+    async function gerarPDFCotacao(sale) {
+      const btn = document.getElementById("download-btn");
+      if (btn) btn.disabled = true;
+
+      try {
+        const linhas = (sale.itens || []).map((item) => ({
+          name: item.nome_produto,
+          quantidade: Number(item.quantidade) || 1,
+          price: parseFloat(item.preco_unitario) || 0,
+          photo: item.foto_url || null,
+          barcode: item.codigo_barras || item.produto_id || ""
+        }));
+
+        const miniaturas = await Promise.all(linhas.map((l) => carregarMiniaturaPDF(l.photo)));
+        const doc = new window.jspdf.jsPDF();
+        const largura = doc.internal.pageSize.getWidth();
+        const altura = doc.internal.pageSize.getHeight();
+        const margem = 16, direita = largura - margem;
+        const xNome = margem + 19, xQtd = 121, xPreco = 157;
+        const larguraNome = xQtd - xNome - 16;
+        const limite = altura - 24;
+        const dataVenda = new Date(sale.data_venda);
+        const numero = String(sale.id).slice(-8).toUpperCase();
+        let y;
+
+        const texto = (valor, x, posY, tamanho = 10, negrito = false, cor = 35, alinhamento = "left") => {
+          doc.setFont("helvetica", negrito ? "bold" : "normal");
+          doc.setFontSize(tamanho);
+          doc.setTextColor(cor);
+          doc.text(valor, x, posY, { align: alinhamento });
+        };
+
+        const cabecalho = () => {
+          texto("Cotação", margem, 23, 18, true);
+          texto(`Nº: ${numero}`, direita, 22, 9, false, 110, "right");
+          texto(`Data: ${dataVenda.toLocaleDateString("pt-BR")} ${dataVenda.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, margem, 31, 9, false, 110);
+          doc.setFillColor(247, 247, 248);
+          doc.rect(margem, 40, direita - margem, 11, "F");
+          texto("Produto", margem + 3, 47, 9, false, 115);
+          texto("Quantidade", xQtd, 47, 9, false, 115, "center");
+          texto("Preço unitário", xPreco, 47, 9, false, 115, "right");
+          texto("Total", direita - 3, 47, 9, false, 115, "right");
+          y = 51;
+        };
+
+        const novaPagina = () => { doc.addPage(); cabecalho(); };
+        cabecalho();
+
+        linhas.forEach((p, index) => {
+          doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+          const nome = doc.splitTextToSize(String(p.name), larguraNome);
+          const identificacao = p.barcode;
+          doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+          const codigo = !identificacao ? [] : doc.splitTextToSize(String(identificacao), larguraNome);
+
+          const blocos = [
+            ...nome.map((text) => ({ text, bold: true, size: 10, color: 35, step: 4.5 })),
+            ...codigo.map((text) => ({ text, bold: false, size: 8, color: 145, step: 3.8 }))
+          ];
+          let offset = 0;
+          while (offset < blocos.length) {
+            if (y + 23 > limite) novaPagina();
+            const disponivel = limite - y - 10;
+            let usados = 0, fim = offset;
+            while (fim < blocos.length && usados + blocos[fim].step <= disponivel) {
+              usados += blocos[fim].step; fim++;
+            }
+            const alturaLinha = Math.max(23, usados + 10);
+            const centro = y + alturaLinha / 2
